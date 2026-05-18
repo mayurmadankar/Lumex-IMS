@@ -1,0 +1,689 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  fullName     String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(USER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  companyId String?
+  company   Company? @relation("UserCompany", fields: [companyId], references: [id])
+
+  orgAdminProfile       OrgAdminProfile?
+  departmentAccesses    UserDepartmentAccess[]
+  accountsCreated       Account[]              @relation("AccountCreatedBy")
+  accountsUpdated       Account[]              @relation("AccountUpdatedBy")
+  purchaseNotesCreated  PurchaseNote[]         @relation("PurchaseNoteCreatedBy")
+  memosCreated          Memo[]                 @relation("MemoCreatedBy")
+  invoicesCreated       Invoice[]              @relation("InvoiceCreatedBy")
+  inventoryItemsCreated InventoryItem[]        @relation("InventoryItemCreatedBy")
+  itemMastersCreated    ItemMaster[]           @relation("ItemMasterCreatedBy")
+}
+
+model OrgAdminProfile {
+  id           String  @id @default(uuid())
+  userId       String  @unique
+  billingEmail String?
+
+  activePlan Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Company {
+  id                  String        @id @default(uuid())
+  name                String
+  code                String?       @unique
+  country             String
+  status              CompanyStatus @default(ACTIVE)
+  companyEmail        String        @unique
+  primaryDepartmentId String?       @unique
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  users               User[]        @relation("UserCompany")
+
+  primaryDepartment   Department?        @relation("CompanyPrimaryDepartment", fields: [primaryDepartmentId], references: [id], onDelete: SetNull)
+  departments         Department[]       @relation("CompanyDepartments")
+  accounts            Account[]
+  accountSequence     AccountSequence?
+  inventorySequence   InventorySequence?
+  purchaseNotes       PurchaseNote[]     @relation("PurchaseNoteCompany")
+  sourcePurchaseNotes PurchaseNote[]     @relation("PurchaseNoteSourceCompany")
+  memos               Memo[]
+  invoices            Invoice[]
+  sourceInvoices      Invoice[]          @relation("InvoiceSourceCompany")
+  inventoryItems      InventoryItem[]
+  itemMasters         ItemMaster[]
+  itemSequence        ItemSequence?
+}
+
+model AccountType {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  accounts Account[]
+}
+
+model Country {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  iso2      String   @unique
+  phoneCode String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  states   State[]
+  accounts Account[] @relation("AccountCountry")
+}
+
+model State {
+  id        String   @id @default(uuid())
+  name      String
+  code      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  countryId String
+  country   Country   @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  cities    City[]
+  accounts  Account[]
+
+  @@unique([countryId, code])
+  @@unique([countryId, name])
+}
+
+model City {
+  id        String   @id @default(uuid())
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stateId String
+  state   State  @relation(fields: [stateId], references: [id], onDelete: Cascade)
+
+  @@unique([stateId, name])
+}
+
+model Department {
+  id          String   @id @default(uuid())
+  name        String
+  country     String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  companyId         String
+  company           Company                @relation("CompanyDepartments", fields: [companyId], references: [id], onDelete: Cascade)
+  primaryForCompany Company?               @relation("CompanyPrimaryDepartment")
+  userAccesses      UserDepartmentAccess[]
+  originAccounts    Account[]
+  purchaseNotes     PurchaseNote[]
+  memos             Memo[]
+  invoices          Invoice[]
+  inventoryItems    InventoryItem[]
+
+  @@unique([companyId, name])
+}
+
+model AccountSequence {
+  companyId  String   @id
+  nextNumber Int      @default(1)
+  updatedAt  DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+}
+
+model InventorySequence {
+  companyId              String   @id
+  nextLotId              Int      @default(1)
+  nextDocumentNumber     Int      @default(1)
+  nextPurchaseNoteNumber Int      @default(1)
+  nextMemoNumber         Int      @default(1)
+  nextInvoiceNumber      Int      @default(1)
+  updatedAt              DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+}
+
+model ItemSequence {
+  companyId  String   @id
+  nextNumber Int      @default(100)
+  updatedAt  DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+}
+
+model ItemMaster {
+  id       String            @id @default(uuid())
+  itemId   Int
+  itemName String
+  itemType String
+  uow      UnitOfWeight
+  uom      UnitOfMeasurement
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  createdById String?
+  createdBy   User?   @relation("ItemMasterCreatedBy", fields: [createdById], references: [id])
+
+  inventoryItems InventoryItem[]
+  invoiceItems   InvoiceItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, itemId])
+  @@unique([companyId, itemName])
+  @@index([companyId, itemType])
+  @@index([createdById])
+}
+
+model Account {
+  id              String        @id @default(uuid())
+  accountName     String
+  accountLongName String?
+  accountIndex    String?
+  status          AccountStatus @default(ACTIVE)
+  closeDate       DateTime?
+  closeReason     String?
+
+  address     String?
+  address2    String?
+  countryIso2 String?
+  country     Country? @relation("AccountCountry", fields: [countryIso2], references: [iso2])
+  stateId     String?
+  state       State?   @relation(fields: [stateId], references: [id])
+  city        String?
+  zipCode     String?
+  phone1      String?
+  phone2      String?
+  email       String?
+  website     String?
+  trnNo       String?
+  isTaxable   Boolean  @default(true)
+
+  accountTypeId String
+  accountType   AccountType @relation(fields: [accountTypeId], references: [id])
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  originDepartmentId String?
+  originDepartment   Department? @relation(fields: [originDepartmentId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("AccountCreatedBy", fields: [createdById], references: [id])
+
+  updatedById String?
+  updatedBy   User?   @relation("AccountUpdatedBy", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchaseNotesAsVendor  PurchaseNote[]  @relation("PurchaseNoteVendorAccount")
+  memosAsAccount         Memo[]          @relation("MemoAccount")
+  invoicesAsAccount      Invoice[]       @relation("InvoiceAccount")
+  inventoryItemsAsVendor InventoryItem[] @relation("InventoryItemVendorAccount")
+
+  @@unique([companyId, accountName])
+  @@unique([companyId, accountIndex])
+  @@index([companyId, status])
+  @@index([accountTypeId])
+  @@index([originDepartmentId])
+  @@index([createdById])
+}
+
+model PurchaseNote {
+  id           String       @id @default(uuid())
+  docId        Int
+  purchaseNo   String
+  purchaseFrom PurchaseFrom
+  docType      String
+
+  openDate       DateTime @default(now())
+  docDate        DateTime @default(now())
+  referenceDocNo String?
+
+  docQty              Int
+  docWeight           Decimal            @db.Decimal(18, 4)
+  docGrandTotalPrice  Decimal            @db.Decimal(18, 2)
+  mainGrandTotalPrice Decimal            @db.Decimal(18, 2)
+  balanceAmount       Decimal            @db.Decimal(18, 2)
+  paymentTerm         Int?
+  currency            String             @default("USD")
+  status              PurchaseNoteStatus @default(ACTIVE)
+
+  companyId String
+  company   Company @relation("PurchaseNoteCompany", fields: [companyId], references: [id])
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+  vendorAccountId String?
+  vendorAccount   Account? @relation("PurchaseNoteVendorAccount", fields: [vendorAccountId], references: [id])
+
+  sourceCompanyId String?
+  sourceCompany   Company? @relation("PurchaseNoteSourceCompany", fields: [sourceCompanyId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("PurchaseNoteCreatedBy", fields: [createdById], references: [id])
+
+  inventoryItems         InventoryItem[] @relation("PurchaseNoteItems")
+  returnedInventoryItems InventoryItem[] @relation("PurchaseReturnItems")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, purchaseNo])
+  @@unique([companyId, docId])
+  @@index([departmentId, createdAt(sort: Desc)])
+  @@index([vendorAccountId])
+  @@index([sourceCompanyId])
+  @@index([createdById])
+}
+
+model InventoryItem {
+  id       String @id @default(uuid())
+  itemId   String
+  lotId    Int
+  itemType String @default("POLISHED_DIAMOND")
+
+  itemMasterId String?
+  itemMaster   ItemMaster? @relation(fields: [itemMasterId], references: [id])
+
+  lotName               String
+  quantity              Int
+  weight                Decimal       @db.Decimal(18, 4)
+  totalCost             Decimal       @db.Decimal(18, 2)
+  labAccountName        String
+  certificateNo         String
+  parcelOrStone         ParcelOrStone
+  shape                 String?
+  color                 String?
+  clarity               String?
+  rap                   Decimal?      @db.Decimal(18, 2)
+  mainDiscount          Decimal?      @db.Decimal(18, 2)
+  docPriceGross         Decimal?      @db.Decimal(18, 2)
+  totalDocPriceGross    Decimal?      @db.Decimal(18, 2)
+  remark                String?
+  departmentAccountName String
+  locationAccountName   String
+  status                LotStatus     @default(STOCK)
+
+  purchaseNoteId String?
+  purchaseNote   PurchaseNote? @relation("PurchaseNoteItems", fields: [purchaseNoteId], references: [id], onDelete: Restrict)
+
+  memoId String?
+  memo   Memo?   @relation("MemoOriginItems", fields: [memoId], references: [id], onDelete: Restrict)
+
+  memoReturnId String?
+  memoReturn   Memo?   @relation("MemoReturnItems", fields: [memoReturnId], references: [id], onDelete: SetNull)
+
+  purchaseReturnId String?
+  purchaseReturn   PurchaseNote? @relation("PurchaseReturnItems", fields: [purchaseReturnId], references: [id], onDelete: SetNull)
+
+  vendorAccountId String?
+  vendorAccount   Account? @relation("InventoryItemVendorAccount", fields: [vendorAccountId], references: [id])
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("InventoryItemCreatedBy", fields: [createdById], references: [id])
+
+  invoiceItems       InvoiceItem[]
+  inventoryMovements InventoryMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, itemId])
+  @@unique([companyId, lotId])
+  @@index([itemMasterId])
+  @@index([purchaseNoteId])
+  @@index([memoId])
+  @@index([memoReturnId])
+  @@index([purchaseReturnId])
+  @@index([departmentId, createdAt(sort: Desc)])
+  @@index([vendorAccountId])
+  @@index([createdById])
+}
+
+model InventoryMovement {
+  id              String                        @id @default(uuid())
+  inventoryItemId String
+  inventoryItem   InventoryItem                 @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  event           InventoryMovementType
+  fromStatus      LotStatus?
+  toStatus        LotStatus
+  documentType    InventoryMovementDocumentType
+  documentId      String
+  documentNo      String?
+  docId           Int
+  companyId       String
+  departmentId    String
+  createdById     String
+  occurredAt      DateTime                      @default(now())
+  metadata        Json?
+
+  @@index([inventoryItemId, occurredAt])
+  @@index([companyId, occurredAt])
+  @@index([departmentId, occurredAt])
+  @@index([documentType, documentId])
+}
+
+model Memo {
+  id          String  @id @default(uuid())
+  docId       Int
+  memoNo      String
+  docType     String  @default("Memo In")
+  vendorDocId String?
+
+  openDate       DateTime @default(now())
+  docDate        DateTime @default(now())
+  referenceDocNo String?
+  itemType       String?
+
+  docQty              Int
+  docWeight           Decimal    @db.Decimal(18, 4)
+  docGrandTotalPrice  Decimal    @db.Decimal(18, 2)
+  mainGrandTotalPrice Decimal    @db.Decimal(18, 2)
+  balanceAmount       Decimal    @db.Decimal(18, 2)
+  paymentTerm         Int?
+  currency            String     @default("USD")
+  docRateToMain       Decimal    @default(1) @db.Decimal(18, 8)
+  docRateToSec        Decimal    @default(1) @db.Decimal(18, 8)
+  status              MemoStatus @default(ACTIVE)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+  accountId String
+  account   Account @relation("MemoAccount", fields: [accountId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("MemoCreatedBy", fields: [createdById], references: [id])
+
+  inventoryItems         InventoryItem[] @relation("MemoOriginItems")
+  returnedInventoryItems InventoryItem[] @relation("MemoReturnItems")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, memoNo])
+  @@unique([companyId, docId])
+  @@index([departmentId, createdAt(sort: Desc)])
+  @@index([accountId])
+  @@index([createdById])
+}
+
+model Invoice {
+  id          String      @id @default(uuid())
+  docId       Int
+  invoiceNo   String
+  docType     String      @default("Invoice")
+  invoiceType InvoiceType
+
+  openDate       DateTime @default(now())
+  docDate        DateTime @default(now())
+  referenceDocNo String
+
+  docQty              Int
+  docWeight           Decimal       @default(0) @db.Decimal(18, 4)
+  subtotalAmount      Decimal       @db.Decimal(18, 2)
+  discountAmount      Decimal       @default(0) @db.Decimal(18, 2)
+  taxAmount           Decimal       @default(0) @db.Decimal(18, 2)
+  totalAmount         Decimal       @db.Decimal(18, 2)
+  balanceAmount       Decimal       @db.Decimal(18, 2)
+  currency            String        @default("USD")
+  notes               String?
+  specialInstructions String?
+  status              InvoiceStatus @default(ACTIVE)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+  accountId String?
+  account   Account? @relation("InvoiceAccount", fields: [accountId], references: [id])
+
+  sourceCompanyId String?
+  sourceCompany   Company? @relation("InvoiceSourceCompany", fields: [sourceCompanyId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+
+  items InvoiceItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, invoiceNo])
+  @@unique([companyId, docId])
+  @@unique([companyId, referenceDocNo])
+  @@index([departmentId, createdAt(sort: Desc)])
+  @@index([accountId])
+  @@index([sourceCompanyId])
+  @@index([createdById])
+}
+
+model InvoiceItem {
+  id String @id @default(uuid())
+
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  inventoryItemId String?
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+
+  itemMasterId String?
+  itemMaster   ItemMaster? @relation(fields: [itemMasterId], references: [id])
+
+  itemId          String?
+  lotId           Int?
+  itemName        String
+  itemDescription String?
+  quantity        Int
+  unitPrice       Decimal        @db.Decimal(18, 2)
+  totalAmount     Decimal        @db.Decimal(18, 2)
+  weight          Decimal        @default(0) @db.Decimal(18, 4)
+  labAccountName  String?
+  certificateNo   String?
+  parcelOrStone   ParcelOrStone?
+  remark          String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([inventoryItemId])
+  @@index([invoiceId])
+  @@index([itemMasterId])
+}
+
+model AuditLog {
+  id String @id @default(uuid())
+
+  actorUserId String
+  actorRole   UserRole
+  actorEmail  String?
+
+  companyId    String?
+  departmentId String?
+
+  module     String
+  action     AuditAction
+  entityType AuditEntityType
+  entityId   String?
+  status     AuditStatus     @default(SUCCESS)
+
+  before   Json?
+  after    Json?
+  changes  Json?
+  metadata Json?
+
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([actorUserId])
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([departmentId])
+  @@index([entityType, entityId, createdAt(sort: Desc)])
+  @@index([module, action])
+  @@index([createdAt])
+}
+
+model UserDepartmentAccess {
+  id           String   @id @default(uuid())
+  userId       String
+  departmentId String
+  permissions  Json     @default("[{\"module\":\"INVENTORY_LIST\",\"permission\":\"NONE\"},{\"module\":\"ITEM_LIST\",\"permission\":\"NONE\"},{\"module\":\"CHANGE_LOCATION\",\"permission\":\"NONE\"},{\"module\":\"SEND_TO_PROCESS\",\"permission\":\"NONE\"},{\"module\":\"RETURN_PARTS\",\"permission\":\"NONE\"},{\"module\":\"PURCHASE_NOTE_LIST\",\"permission\":\"NONE\"},{\"module\":\"NEW_PURCHASE_NOTE\",\"permission\":\"NONE\"},{\"module\":\"NEW_PURCH_NOTE_RTN\",\"permission\":\"NONE\"},{\"module\":\"MEMO_IN_LIST\",\"permission\":\"NONE\"},{\"module\":\"NEW_MEMO_IN\",\"permission\":\"NONE\"},{\"module\":\"MEMO_IN_RETURN\",\"permission\":\"NONE\"},{\"module\":\"PACK_LIST\",\"permission\":\"NONE\"},{\"module\":\"NEW_PACK\",\"permission\":\"NONE\"},{\"module\":\"NEW_PACK_RETURN\",\"permission\":\"NONE\"},{\"module\":\"INVOICE_LIST\",\"permission\":\"NONE\"},{\"module\":\"NEW_INVOICE\",\"permission\":\"NONE\"},{\"module\":\"NEW_INVOICE_RETURN\",\"permission\":\"NONE\"},{\"module\":\"MEMO_OUT_LIST\",\"permission\":\"NONE\"},{\"module\":\"NEW_MEMO_OUT\",\"permission\":\"NONE\"},{\"module\":\"NEW_MEMO_OUT_RETURN\",\"permission\":\"NONE\"},{\"module\":\"TRANSFER_LIST\",\"permission\":\"NONE\"},{\"module\":\"NEW_TRANSFER\",\"permission\":\"NONE\"},{\"module\":\"NEW_TRANSFER_RETURN\",\"permission\":\"NONE\"},{\"module\":\"ACCOUNT_LIST\",\"permission\":\"NONE\"},{\"module\":\"NEW_ACCOUNT\",\"permission\":\"NONE\"}]")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, departmentId])
+}
+
+enum UserRole {
+  ORG_ADMIN
+  USER
+}
+
+enum CompanyStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum AccountStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+  CLOSED
+}
+
+enum PurchaseFrom {
+  LOCAL_PURCHASE
+  IMPORT_PURCHASE
+  INTERNAL_PURCHASE
+}
+
+enum ParcelOrStone {
+  PARCEL
+  STONE
+}
+
+enum LotStatus {
+  STOCK
+  MEMO
+  SOLD
+  RETURNED
+}
+
+enum InventoryMovementType {
+  PURCHASE_IN
+  MEMO_IN
+  MEMO_PURCHASED
+  MEMO_RETURN
+  PURCHASE_RETURN
+  INVOICE_OUT
+  INVOICE_RETURN
+}
+
+enum InventoryMovementDocumentType {
+  PURCHASE_NOTE
+  MEMO
+  INVOICE
+}
+
+enum UnitOfWeight {
+  CARATS
+  GRAMS
+}
+
+enum UnitOfMeasurement {
+  PCS
+  WEIGHT
+}
+
+enum InvoiceType {
+  LOCAL_INVOICE
+  EXPORT_INVOICE
+  INTERNAL_INVOICE
+}
+
+enum InvoiceStatus {
+  ACTIVE
+  PENDING
+  DRAFT
+  CANCELLED
+}
+
+enum PurchaseNoteStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum MemoStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  APPROVE
+  CANCEL
+  LOGIN
+  LOGOUT
+  EXPORT
+}
+
+enum AuditEntityType {
+  ACCOUNT
+  PURCHASE_NOTE
+  MEMO
+  INVENTORY_ITEM
+  INVOICE
+  PAYMENT
+  USER
+  DEPARTMENT
+  COMPANY
+  PERMISSION
+  ACCOUNT_TYPE
+}
+
+enum AuditStatus {
+  SUCCESS
+  FAILED
+}

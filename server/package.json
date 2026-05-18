@@ -1,0 +1,35 @@
+{
+  "name": "ims-backend",
+  "version": "1.0.0",
+  "description": "BACKEND",
+  "homepage": "https://github.com/Lumex-online/ims-backend#readme",
+  "bugs": {
+    "url": "https://github.com/Lumex-online/ims-backend/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Lumex-online/ims-backend.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "seed": "node seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.2",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "prisma": "^6.19.2",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0"
+  }
+}

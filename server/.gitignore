@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+.js
+seed.js
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Prisma
+prisma/migrations/
+*.db
+*.db-journal
+
+# Build output
+dist/
+build/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Runtime
+pids/
+*.pid
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/

@@ -1,0 +1,324 @@
+"use client";
+
+import { Eye, FilePlus, Loader2, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+
+import { getInvoices } from "@/api/services/invoice.service";
+import type { InvoiceListItem, InvoiceStatus, InvoiceType } from "@/api/services/invoice.service";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import Pagination from "@/components/ui/pagination";
+import { permissionAllows, permissionsToMap } from "@/config/modules";
+import { usePagination } from "@/hooks/use-pagination";
+import { useAppSelector } from "@/store/hooks";
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatNumber(value: number, digits = 2) {
+  return new Intl.NumberFormat("en-IN", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(value);
+}
+
+function InvoiceTypePill({ type }: { type: InvoiceType }) {
+  const styles: Record<InvoiceType, string> = {
+    LOCAL_INVOICE: "bg-emerald-50 text-emerald-700",
+    EXPORT_INVOICE: "bg-blue-50 text-blue-700",
+    INTERNAL_INVOICE: "bg-amber-50 text-amber-700",
+  };
+
+  const labels: Record<InvoiceType, string> = {
+    LOCAL_INVOICE: "Local",
+    EXPORT_INVOICE: "Export",
+    INTERNAL_INVOICE: "Internal",
+  };
+
+  return (
+    <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${styles[type]}`}>
+      {labels[type]}
+    </span>
+  );
+}
+
+function StatusPill({ status }: { status: InvoiceStatus }) {
+  const styles: Record<InvoiceStatus, string> = {
+    ACTIVE: "bg-emerald-50 text-emerald-700",
+    PENDING: "bg-amber-50 text-amber-700",
+    DRAFT: "bg-slate-100 text-slate-700",
+    CANCELLED: "bg-rose-50 text-rose-700",
+  };
+
+  return (
+    <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${styles[status]}`}>
+      {status}
+    </span>
+  );
+}
+
+function accountName(invoice: InvoiceListItem) {
+  return invoice.account?.accountName ?? invoice.sourceCompany?.name ?? "-";
+}
+
+function accountDocId(invoice: InvoiceListItem) {
+  return invoice.account?.accountIndex ?? invoice.sourceCompany?.code ?? "-";
+}
+
+function sourceDocId(invoice: InvoiceListItem) {
+  return invoice.sourceDocId ?? invoice.items?.[0]?.sourceDocId ?? "-";
+}
+
+function lotId(invoice: InvoiceListItem) {
+  return invoice.lotId ?? invoice.items?.[0]?.lotId ?? "-";
+}
+
+export default function InvoiceListPage() {
+  const router = useRouter();
+  const user = useAppSelector((state) => state.auth.user);
+  const persistedPermissions = useAppSelector(
+    (state) => state.permission.permissions,
+  );
+  const [invoices, setInvoices] = useState<InvoiceListItem[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const departmentAccesses = useMemo(
+    () => user?.departmentAccesses ?? [],
+    [user?.departmentAccesses],
+  );
+  const selectedDepartmentId =
+    user?.selectedDepartmentId ?? departmentAccesses[0]?.departmentId ?? null;
+  const selectedAccess =
+    departmentAccesses.find(
+      (access) => access.departmentId === selectedDepartmentId,
+    ) ?? departmentAccesses[0];
+  const permissionMap = selectedAccess
+    ? permissionsToMap(selectedAccess.permissions)
+    : persistedPermissions;
+  const canReadInvoices = permissionAllows(permissionMap.INVOICE_LIST, "READ_ONLY");
+  const canCreateInvoice = permissionAllows(permissionMap.NEW_INVOICE, "READ_WRITE");
+
+  useEffect(() => {
+    if (!canReadInvoices || !selectedDepartmentId) {
+      setLoading(false);
+      return;
+    }
+
+    const loadInvoices = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await getInvoices("user", {
+          departmentId: selectedDepartmentId,
+        });
+        setInvoices(response.data.invoices ?? []);
+      } catch {
+        setError("Failed to load invoices.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadInvoices();
+  }, [canReadInvoices, selectedDepartmentId]);
+
+  const filteredInvoices = useMemo(() => {
+    const value = search.trim().toLowerCase();
+    if (!value) return invoices;
+
+    return invoices.filter((invoice) =>
+      [
+        invoice.company.name,
+        invoice.invoiceNo,
+        invoice.docId,
+        invoice.sourceDocId,
+        invoice.sourceDocNo,
+        invoice.lotId,
+        invoice.referenceDocNo,
+        invoice.notes,
+        invoice.invoiceType,
+        invoice.invoiceTypeLabel,
+        invoice.account?.accountName,
+        invoice.account?.accountIndex,
+        invoice.sourceCompany?.name,
+        invoice.sourceCompany?.code,
+        invoice.itemName,
+        invoice.itemDescription,
+        invoice.status,
+        invoice.currency,
+      ]
+        .filter(Boolean)
+        .some((item) => String(item).toLowerCase().includes(value)),
+    );
+  }, [invoices, search]);
+  const {
+    paginatedItems: paginatedInvoices,
+    ...invoicePagination
+  } = usePagination(filteredInvoices);
+
+  if (!canReadInvoices) {
+    return (
+      <div className="p-6">
+        <div className="rounded-2xl border border-dashed bg-background px-6 py-12 text-center text-sm text-muted-foreground">
+          You do not have permission to view invoices in this department.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-muted/30 p-6">
+      <div className="mx-auto max-w-[1500px] space-y-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Invoice
+            </p>
+            <h1 className="text-2xl font-semibold tracking-tight">Invoice List</h1>
+            <p className="text-sm text-muted-foreground">
+              {filteredInvoices.length} invoice records found
+            </p>
+          </div>
+
+          {canCreateInvoice && (
+            <Button
+              className="h-9 rounded-xl"
+              onClick={() => router.push("/user/invoice/new-invoice")}
+            >
+              <FilePlus className="h-4 w-4" />
+              New Invoice
+            </Button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 rounded-2xl border bg-background px-3 py-2">
+          <Search className="h-4 w-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search invoices"
+            className="h-9 border-0 px-0 shadow-none focus-visible:ring-0"
+          />
+        </div>
+
+        {loading ? (
+          <div className="flex h-48 items-center justify-center rounded-2xl border bg-background text-sm text-muted-foreground">
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Loading invoices...
+          </div>
+        ) : error ? (
+          <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-6 py-8 text-center text-sm text-destructive">
+            {error}
+          </div>
+        ) : filteredInvoices.length === 0 ? (
+          <div className="rounded-2xl border border-dashed bg-background px-6 py-12 text-center text-sm text-muted-foreground">
+            No invoices found.
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-2xl border bg-background">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1960px] text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+                    <th className="px-3 py-3 font-medium">Invoice ID</th>
+                    <th className="px-3 py-3 font-medium">Doc ID</th>
+                    <th className="px-3 py-3 font-medium">Account</th>
+                    <th className="px-3 py-3 font-medium">Account Doc ID</th>
+                    <th className="px-3 py-3 font-medium">Lot ID</th>
+                    <th className="px-3 py-3 font-medium">Source Doc ID</th>
+                    <th className="px-3 py-3 font-medium">Item Name</th>
+                    <th className="px-3 py-3 font-medium">Description</th>
+                    <th className="px-3 py-3 text-right font-medium">Qty</th>
+                    <th className="px-3 py-3 text-right font-medium">Unit Price</th>
+                    <th className="px-3 py-3 text-right font-medium">Total Amount</th>
+                    <th className="px-3 py-3 font-medium">Invoice Type</th>
+                    <th className="px-3 py-3 font-medium">Reference Doc No</th>
+                    <th className="px-3 py-3 font-medium">Remark</th>
+                    <th className="px-3 py-3 font-medium">Date Created</th>
+                    <th className="px-3 py-3 font-medium">Status</th>
+                    <th className="px-3 py-3 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedInvoices.map((invoice) => (
+                    <tr key={invoice.id} className="border-b last:border-0">
+                      <td className="px-3 py-3">
+                        <button
+                          type="button"
+                          className="font-medium text-blue-600 hover:underline"
+                          onClick={() => router.push(`/user/invoice/invoices/${invoice.id}`)}
+                        >
+                          {invoice.invoiceNo}
+                        </button>
+                      </td>
+                      <td className="px-3 py-3 font-medium text-blue-600">
+                        {invoice.docId}
+                      </td>
+                      <td className="px-3 py-3">{accountName(invoice)}</td>
+                      <td className="px-3 py-3 font-medium text-blue-600">
+                        {accountDocId(invoice)}
+                      </td>
+                      <td className="px-3 py-3 font-medium text-blue-600">
+                        {lotId(invoice)}
+                      </td>
+                      <td className="px-3 py-3 font-medium text-blue-600">
+                        {sourceDocId(invoice)}
+                      </td>
+                      <td className="px-3 py-3">{invoice.itemName ?? "-"}</td>
+                      <td className="px-3 py-3">{invoice.itemDescription ?? "-"}</td>
+                      <td className="px-3 py-3 text-right">{invoice.quantity ?? invoice.docQty}</td>
+                      <td className="px-3 py-3 text-right font-semibold">
+                        {formatNumber(invoice.unitPrice ?? 0)}
+                      </td>
+                      <td className="px-3 py-3 text-right font-semibold text-emerald-600">
+                        {formatNumber(invoice.totalAmount)}
+                      </td>
+                      <td className="px-3 py-3">
+                        <InvoiceTypePill type={invoice.invoiceType} />
+                      </td>
+                      <td className="px-3 py-3">{invoice.referenceDocNo}</td>
+                      <td className="px-3 py-3">{invoice.notes ?? "-"}</td>
+                      <td className="px-3 py-3">{formatDate(invoice.createdAt)}</td>
+                      <td className="px-3 py-3">
+                        <StatusPill status={invoice.status} />
+                      </td>
+                      <td className="px-3 py-3">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-8 rounded-xl"
+                          onClick={() => router.push(`/user/invoice/invoices/${invoice.id}`)}
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          View
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pagination
+              page={invoicePagination.page}
+              totalPages={invoicePagination.totalPages}
+              start={invoicePagination.start}
+              end={invoicePagination.end}
+              total={invoicePagination.total}
+              onPageChange={invoicePagination.setPage}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
