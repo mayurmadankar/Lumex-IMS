@@ -1,0 +1,7 @@
+▲ Next.js 16.2.0 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.1.45:3000
+- Environments: .env
+✓ Ready in 329ms
+Creating turbopack project { dir: 'C:\\Users\\lumex\\Desktop\\IMS Sid\\client', testMode: true }
+
