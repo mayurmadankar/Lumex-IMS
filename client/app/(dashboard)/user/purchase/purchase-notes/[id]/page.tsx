@@ -11,9 +11,8 @@ import type {
 } from "@/api/services/purchase.service";
 import { Button } from "@/components/ui/button";
 import Pagination from "@/components/ui/pagination";
-import { permissionAllows, permissionsToMap } from "@/config/modules";
+import { useCompanyAccess } from "@/hooks/use-company-access";
 import { usePagination } from "@/hooks/use-pagination";
-import { useAppSelector } from "@/store/hooks";
 
 function formatDate(value?: string | null, withTime = false) {
   if (!value) return "-";
@@ -89,38 +88,22 @@ export default function PurchaseNoteDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const user = useAppSelector((state) => state.auth.user);
-  const persistedPermissions = useAppSelector(
-    (state) => state.permission.permissions,
-  );
+  const { currentCompany, hasCompanyPermission } = useCompanyAccess();
   const [purchaseNote, setPurchaseNote] = useState<PurchaseNoteListItem | null>(
     null,
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const departmentAccesses = useMemo(
-    () => user?.departmentAccesses ?? [],
-    [user?.departmentAccesses],
-  );
-  const selectedDepartmentId =
-    user?.selectedDepartmentId ?? departmentAccesses[0]?.departmentId ?? null;
-  const selectedAccess =
-    departmentAccesses.find(
-      (access) => access.departmentId === selectedDepartmentId,
-    ) ?? departmentAccesses[0];
-  const permissionMap = selectedAccess
-    ? permissionsToMap(selectedAccess.permissions)
-    : persistedPermissions;
   const docTypeFilter = searchParams.get("docType") ?? undefined;
   const isPurchaseReturnDetail = docTypeFilter === "Purchase Return";
   const canReadPurchaseNotes =
-    permissionAllows(permissionMap.PURCHASE_NOTE_LIST, "READ_ONLY") ||
+    hasCompanyPermission("PURCHASE_NOTE_LIST", "READ_ONLY") ||
     (isPurchaseReturnDetail &&
-      permissionAllows(permissionMap.NEW_PURCH_NOTE_RTN, "READ_WRITE"));
+      hasCompanyPermission("NEW_PURCH_NOTE_RTN", "READ_WRITE"));
 
   useEffect(() => {
-    if (!canReadPurchaseNotes || !selectedDepartmentId || !id) {
+    if (!canReadPurchaseNotes || !currentCompany?.id || !id) {
       setLoading(false);
       return;
     }
@@ -130,7 +113,7 @@ export default function PurchaseNoteDetailPage() {
         setLoading(true);
         setError(null);
         const response = await getPurchaseNote("user", id, {
-          departmentId: selectedDepartmentId,
+          companyId: currentCompany.id,
           docType: docTypeFilter,
         });
         setPurchaseNote(response.data.purchaseNote);
@@ -142,7 +125,7 @@ export default function PurchaseNoteDetailPage() {
     };
 
     loadPurchaseNote();
-  }, [canReadPurchaseNotes, docTypeFilter, id, selectedDepartmentId]);
+  }, [canReadPurchaseNotes, currentCompany?.id, docTypeFilter, id]);
   const items = useMemo(() => purchaseNote?.items ?? [], [purchaseNote?.items]);
   const {
     paginatedItems: paginatedLineItems,
@@ -153,7 +136,7 @@ export default function PurchaseNoteDetailPage() {
     return (
       <div className="p-6">
         <div className="rounded-2xl border border-dashed bg-background px-6 py-12 text-center text-sm text-muted-foreground">
-          You do not have permission to view purchase documents in this department.
+          You do not have permission to view purchase documents in this company.
         </div>
       </div>
     );
@@ -214,6 +197,14 @@ export default function PurchaseNoteDetailPage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <DetailValue label="Company" value={purchaseNote.company.name} />
           <DetailValue label="Department" value={purchaseNote.department.name} />
+          <DetailValue
+            label="Performed By"
+            value={
+              purchaseNote.createdBy?.fullName ??
+              purchaseNote.createdBy?.email ??
+              "-"
+            }
+          />
           <DetailValue
             label="Vendor"
             value={purchaseNote.vendorAccount?.accountName ?? "-"}

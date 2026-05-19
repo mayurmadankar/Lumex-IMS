@@ -9,9 +9,8 @@ import type { PurchaseNoteListItem } from "@/api/services/purchase.service";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Pagination from "@/components/ui/pagination";
-import { permissionAllows, permissionsToMap } from "@/config/modules";
+import { useCompanyAccess } from "@/hooks/use-company-access";
 import { usePagination } from "@/hooks/use-pagination";
-import { useAppSelector } from "@/store/hooks";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-IN", {
@@ -60,39 +59,23 @@ function StatusPill({ status }: { status: PurchaseNoteListItem["status"] }) {
 
 export default function PurchaseNoteListPage() {
   const router = useRouter();
-  const user = useAppSelector((state) => state.auth.user);
-  const persistedPermissions = useAppSelector(
-    (state) => state.permission.permissions,
-  );
+  const { currentCompany, hasCompanyPermission } = useCompanyAccess();
   const [purchaseNotes, setPurchaseNotes] = useState<PurchaseNoteListItem[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const departmentAccesses = useMemo(
-    () => user?.departmentAccesses ?? [],
-    [user?.departmentAccesses],
-  );
-  const selectedDepartmentId =
-    user?.selectedDepartmentId ?? departmentAccesses[0]?.departmentId ?? null;
-  const selectedAccess =
-    departmentAccesses.find(
-      (access) => access.departmentId === selectedDepartmentId,
-    ) ?? departmentAccesses[0];
-  const permissionMap = selectedAccess
-    ? permissionsToMap(selectedAccess.permissions)
-    : persistedPermissions;
-  const canReadPurchaseNotes = permissionAllows(
-    permissionMap.PURCHASE_NOTE_LIST,
+  const canReadPurchaseNotes = hasCompanyPermission(
+    "PURCHASE_NOTE_LIST",
     "READ_ONLY",
   );
-  const canCreatePurchaseNote = permissionAllows(
-    permissionMap.NEW_PURCHASE_NOTE,
+  const canCreatePurchaseNote = hasCompanyPermission(
+    "NEW_PURCHASE_NOTE",
     "READ_WRITE",
   );
 
   useEffect(() => {
-    if (!canReadPurchaseNotes || !selectedDepartmentId) {
+    if (!canReadPurchaseNotes || !currentCompany?.id) {
       setLoading(false);
       return;
     }
@@ -102,7 +85,7 @@ export default function PurchaseNoteListPage() {
         setLoading(true);
         setError(null);
         const response = await getPurchaseNotes("user", {
-          departmentId: selectedDepartmentId,
+          companyId: currentCompany.id,
         });
         setPurchaseNotes(response.data.purchaseNotes ?? []);
       } catch {
@@ -113,7 +96,7 @@ export default function PurchaseNoteListPage() {
     };
 
     loadPurchaseNotes();
-  }, [canReadPurchaseNotes, selectedDepartmentId]);
+  }, [canReadPurchaseNotes, currentCompany?.id]);
 
   const filteredPurchaseNotes = useMemo(() => {
     const value = search.trim().toLowerCase();
@@ -122,9 +105,13 @@ export default function PurchaseNoteListPage() {
     return purchaseNotes.filter((note) =>
       [
         note.company.name,
+        note.company.code,
+        note.department.name,
         note.docType,
         note.docId,
         note.purchaseNo,
+        note.createdBy?.fullName,
+        note.createdBy?.email,
         note.vendorAccount?.accountName,
         note.referenceDocNo,
         sourceMemoLabel(note),
@@ -145,7 +132,7 @@ export default function PurchaseNoteListPage() {
     return (
       <div className="p-6">
         <div className="rounded-2xl border border-dashed bg-background px-6 py-12 text-center text-sm text-muted-foreground">
-          You do not have permission to view purchase notes in this department.
+          You do not have permission to view purchase notes in this company.
         </div>
       </div>
     );
@@ -204,10 +191,12 @@ export default function PurchaseNoteListPage() {
         ) : (
           <div className="overflow-hidden rounded-2xl border bg-background">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1640px] text-sm">
+              <table className="w-full min-w-[1840px] text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
                     <th className="px-3 py-3 font-medium">Company</th>
+                    <th className="px-3 py-3 font-medium">Department</th>
+                    <th className="px-3 py-3 font-medium">Performed By</th>
                     <th className="px-3 py-3 font-medium">Doc Type</th>
                     <th className="px-3 py-3 font-medium">Open Date</th>
                     <th className="px-3 py-3 font-medium">DocID</th>
@@ -229,6 +218,10 @@ export default function PurchaseNoteListPage() {
                   {paginatedPurchaseNotes.map((note) => (
                     <tr key={note.id} className="border-b last:border-0">
                       <td className="px-3 py-3">{note.company.name}</td>
+                      <td className="px-3 py-3">{note.department.name}</td>
+                      <td className="px-3 py-3">
+                        {note.createdBy?.fullName ?? note.createdBy?.email ?? "-"}
+                      </td>
                       <td className="px-3 py-3">{note.docType}</td>
                       <td className="px-3 py-3">{formatDate(note.openDate)}</td>
                       <td className="px-3 py-3">

@@ -10,7 +10,9 @@ seed.js
 !.env.example
 
 # Prisma
-prisma/migrations/
+prisma/migrations/*
+!prisma/migrations/20260519000100_transfer_management/
+!prisma/migrations/20260519000100_transfer_management/migration.sql
 *.db
 *.db-journal
 

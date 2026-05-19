@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, FilePlus, Loader2, Search } from "lucide-react";
+import { Eye, FileMinus, FilePlus, Loader2, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -9,9 +9,8 @@ import type { InvoiceListItem, InvoiceStatus, InvoiceType } from "@/api/services
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Pagination from "@/components/ui/pagination";
-import { permissionAllows, permissionsToMap } from "@/config/modules";
+import { useCompanyAccess } from "@/hooks/use-company-access";
 import { usePagination } from "@/hooks/use-pagination";
-import { useAppSelector } from "@/store/hooks";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-IN", {
@@ -83,33 +82,21 @@ function lotId(invoice: InvoiceListItem) {
 
 export default function InvoiceListPage() {
   const router = useRouter();
-  const user = useAppSelector((state) => state.auth.user);
-  const persistedPermissions = useAppSelector(
-    (state) => state.permission.permissions,
-  );
+  const { currentCompany, hasCompanyPermission } = useCompanyAccess();
   const [invoices, setInvoices] = useState<InvoiceListItem[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const departmentAccesses = useMemo(
-    () => user?.departmentAccesses ?? [],
-    [user?.departmentAccesses],
+  const canReadInvoices = hasCompanyPermission("INVOICE_LIST", "READ_ONLY");
+  const canCreateInvoice = hasCompanyPermission("NEW_INVOICE", "READ_WRITE");
+  const canCreateInvoiceReturn = hasCompanyPermission(
+    "NEW_INVOICE_RETURN",
+    "READ_WRITE",
   );
-  const selectedDepartmentId =
-    user?.selectedDepartmentId ?? departmentAccesses[0]?.departmentId ?? null;
-  const selectedAccess =
-    departmentAccesses.find(
-      (access) => access.departmentId === selectedDepartmentId,
-    ) ?? departmentAccesses[0];
-  const permissionMap = selectedAccess
-    ? permissionsToMap(selectedAccess.permissions)
-    : persistedPermissions;
-  const canReadInvoices = permissionAllows(permissionMap.INVOICE_LIST, "READ_ONLY");
-  const canCreateInvoice = permissionAllows(permissionMap.NEW_INVOICE, "READ_WRITE");
 
   useEffect(() => {
-    if (!canReadInvoices || !selectedDepartmentId) {
+    if (!canReadInvoices || !currentCompany?.id) {
       setLoading(false);
       return;
     }
@@ -119,7 +106,7 @@ export default function InvoiceListPage() {
         setLoading(true);
         setError(null);
         const response = await getInvoices("user", {
-          departmentId: selectedDepartmentId,
+          companyId: currentCompany.id,
         });
         setInvoices(response.data.invoices ?? []);
       } catch {
@@ -130,7 +117,7 @@ export default function InvoiceListPage() {
     };
 
     loadInvoices();
-  }, [canReadInvoices, selectedDepartmentId]);
+  }, [canReadInvoices, currentCompany?.id]);
 
   const filteredInvoices = useMemo(() => {
     const value = search.trim().toLowerCase();
@@ -139,7 +126,12 @@ export default function InvoiceListPage() {
     return invoices.filter((invoice) =>
       [
         invoice.company.name,
+        invoice.company.code,
+        invoice.department.name,
+        invoice.createdBy?.fullName,
+        invoice.createdBy?.email,
         invoice.invoiceNo,
+        invoice.docType,
         invoice.docId,
         invoice.sourceDocId,
         invoice.sourceDocNo,
@@ -170,7 +162,7 @@ export default function InvoiceListPage() {
     return (
       <div className="p-6">
         <div className="rounded-2xl border border-dashed bg-background px-6 py-12 text-center text-sm text-muted-foreground">
-          You do not have permission to view invoices in this department.
+          You do not have permission to view invoices in this company.
         </div>
       </div>
     );
@@ -190,15 +182,28 @@ export default function InvoiceListPage() {
             </p>
           </div>
 
-          {canCreateInvoice && (
-            <Button
-              className="h-9 rounded-xl"
-              onClick={() => router.push("/user/invoice/new-invoice")}
-            >
-              <FilePlus className="h-4 w-4" />
-              New Invoice
-            </Button>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {canCreateInvoiceReturn && (
+              <Button
+                variant="outline"
+                className="h-9 rounded-xl"
+                onClick={() => router.push("/user/invoice/new-invoice-return")}
+              >
+                <FileMinus className="h-4 w-4" />
+                New Invoice Return
+              </Button>
+            )}
+
+            {canCreateInvoice && (
+              <Button
+                className="h-9 rounded-xl"
+                onClick={() => router.push("/user/invoice/new-invoice")}
+              >
+                <FilePlus className="h-4 w-4" />
+                New Invoice
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2 rounded-2xl border bg-background px-3 py-2">
@@ -227,9 +232,13 @@ export default function InvoiceListPage() {
         ) : (
           <div className="overflow-hidden rounded-2xl border bg-background">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1960px] text-sm">
+              <table className="w-full min-w-[2280px] text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+                    <th className="px-3 py-3 font-medium">Company</th>
+                    <th className="px-3 py-3 font-medium">Department</th>
+                    <th className="px-3 py-3 font-medium">Performed By</th>
+                    <th className="px-3 py-3 font-medium">Doc Type</th>
                     <th className="px-3 py-3 font-medium">Invoice ID</th>
                     <th className="px-3 py-3 font-medium">Doc ID</th>
                     <th className="px-3 py-3 font-medium">Account</th>
@@ -252,6 +261,14 @@ export default function InvoiceListPage() {
                 <tbody>
                   {paginatedInvoices.map((invoice) => (
                     <tr key={invoice.id} className="border-b last:border-0">
+                      <td className="px-3 py-3">{invoice.company.name}</td>
+                      <td className="px-3 py-3">{invoice.department.name}</td>
+                      <td className="px-3 py-3">
+                        {invoice.createdBy?.fullName ??
+                          invoice.createdBy?.email ??
+                          "-"}
+                      </td>
+                      <td className="px-3 py-3">{invoice.docType}</td>
                       <td className="px-3 py-3">
                         <button
                           type="button"

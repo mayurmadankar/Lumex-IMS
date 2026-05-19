@@ -9,9 +9,8 @@ import type { MemoListItem } from "@/api/services/memo.service";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Pagination from "@/components/ui/pagination";
-import { permissionAllows, permissionsToMap } from "@/config/modules";
+import { useCompanyAccess } from "@/hooks/use-company-access";
 import { usePagination } from "@/hooks/use-pagination";
-import { useAppSelector } from "@/store/hooks";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-IN", {
@@ -51,33 +50,17 @@ function StatusPill({ status }: { status: MemoListItem["status"] }) {
 
 export default function MemoListPage() {
   const router = useRouter();
-  const user = useAppSelector((state) => state.auth.user);
-  const persistedPermissions = useAppSelector(
-    (state) => state.permission.permissions,
-  );
+  const { currentCompany, hasCompanyPermission } = useCompanyAccess();
   const [memos, setMemos] = useState<MemoListItem[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const departmentAccesses = useMemo(
-    () => user?.departmentAccesses ?? [],
-    [user?.departmentAccesses],
-  );
-  const selectedDepartmentId =
-    user?.selectedDepartmentId ?? departmentAccesses[0]?.departmentId ?? null;
-  const selectedAccess =
-    departmentAccesses.find(
-      (access) => access.departmentId === selectedDepartmentId,
-    ) ?? departmentAccesses[0];
-  const permissionMap = selectedAccess
-    ? permissionsToMap(selectedAccess.permissions)
-    : persistedPermissions;
-  const canReadMemos = permissionAllows(permissionMap.MEMO_IN_LIST, "READ_ONLY");
-  const canWriteMemos = permissionAllows(permissionMap.NEW_MEMO_IN, "READ_WRITE");
+  const canReadMemos = hasCompanyPermission("MEMO_IN_LIST", "READ_ONLY");
+  const canWriteMemos = hasCompanyPermission("NEW_MEMO_IN", "READ_WRITE");
 
   useEffect(() => {
-    if (!canReadMemos || !selectedDepartmentId) {
+    if (!canReadMemos || !currentCompany?.id) {
       setLoading(false);
       return;
     }
@@ -87,7 +70,7 @@ export default function MemoListPage() {
         setLoading(true);
         setError(null);
         const response = await getMemos("user", {
-          departmentId: selectedDepartmentId,
+          companyId: currentCompany.id,
         });
         setMemos(response.data.memos ?? []);
       } catch {
@@ -98,7 +81,7 @@ export default function MemoListPage() {
     };
 
     loadMemos();
-  }, [canReadMemos, selectedDepartmentId]);
+  }, [canReadMemos, currentCompany?.id]);
 
   const filteredMemos = useMemo(() => {
     const value = search.trim().toLowerCase();
@@ -109,6 +92,8 @@ export default function MemoListPage() {
         memo.company.name,
         memo.company.code,
         memo.department.name,
+        memo.createdBy?.fullName,
+        memo.createdBy?.email,
         memo.docType,
         memo.docId,
         memo.memoNo,
@@ -131,7 +116,7 @@ export default function MemoListPage() {
     return (
       <div className="p-6">
         <div className="rounded-2xl border border-dashed bg-background px-6 py-12 text-center text-sm text-muted-foreground">
-          You do not have permission to view memo history in this department.
+          You do not have permission to view memo history in this company.
         </div>
       </div>
     );
@@ -190,10 +175,12 @@ export default function MemoListPage() {
         ) : (
           <div className="overflow-hidden rounded-2xl border bg-background">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1600px] text-sm">
+              <table className="w-full min-w-[1800px] text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
                     <th className="px-3 py-3 font-medium">Company</th>
+                    <th className="px-3 py-3 font-medium">Department</th>
+                    <th className="px-3 py-3 font-medium">Performed By</th>
                     <th className="px-3 py-3 font-medium">Doc Type</th>
                     <th className="px-3 py-3 font-medium">Open Date</th>
                     <th className="px-3 py-3 font-medium">Doc ID</th>
@@ -216,6 +203,10 @@ export default function MemoListPage() {
                   {paginatedMemos.map((memo) => (
                     <tr key={memo.id} className="border-b last:border-0">
                       <td className="px-3 py-3">{memo.company.name}</td>
+                      <td className="px-3 py-3">{memo.department.name}</td>
+                      <td className="px-3 py-3">
+                        {memo.createdBy?.fullName ?? memo.createdBy?.email ?? "-"}
+                      </td>
                       <td className="px-3 py-3">{memo.docType}</td>
                       <td className="px-3 py-3">{formatDate(memo.openDate)}</td>
                       <td className="px-3 py-3">

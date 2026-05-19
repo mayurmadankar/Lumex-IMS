@@ -9,9 +9,8 @@ import type { PurchaseNoteListItem } from "@/api/services/purchase.service";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Pagination from "@/components/ui/pagination";
-import { permissionAllows, permissionsToMap } from "@/config/modules";
+import { useCompanyAccess } from "@/hooks/use-company-access";
 import { usePagination } from "@/hooks/use-pagination";
-import { useAppSelector } from "@/store/hooks";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-IN", {
@@ -52,10 +51,7 @@ function StatusPill({ status }: { status: PurchaseNoteListItem["status"] }) {
 
 export default function PurchaseReturnListPage() {
   const router = useRouter();
-  const user = useAppSelector((state) => state.auth.user);
-  const persistedPermissions = useAppSelector(
-    (state) => state.permission.permissions,
-  );
+  const { currentCompany, hasCompanyPermission } = useCompanyAccess();
   const [purchaseReturns, setPurchaseReturns] = useState<PurchaseNoteListItem[]>(
     [],
   );
@@ -63,29 +59,16 @@ export default function PurchaseReturnListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const departmentAccesses = useMemo(
-    () => user?.departmentAccesses ?? [],
-    [user?.departmentAccesses],
-  );
-  const selectedDepartmentId =
-    user?.selectedDepartmentId ?? departmentAccesses[0]?.departmentId ?? null;
-  const selectedAccess =
-    departmentAccesses.find(
-      (access) => access.departmentId === selectedDepartmentId,
-    ) ?? departmentAccesses[0];
-  const permissionMap = selectedAccess
-    ? permissionsToMap(selectedAccess.permissions)
-    : persistedPermissions;
   const canReadPurchaseReturns =
-    permissionAllows(permissionMap.NEW_PURCH_NOTE_RTN, "READ_WRITE") ||
-    permissionAllows(permissionMap.PURCHASE_NOTE_LIST, "READ_ONLY");
-  const canCreatePurchaseReturn = permissionAllows(
-    permissionMap.NEW_PURCH_NOTE_RTN,
+    hasCompanyPermission("NEW_PURCH_NOTE_RTN", "READ_WRITE") ||
+    hasCompanyPermission("PURCHASE_NOTE_LIST", "READ_ONLY");
+  const canCreatePurchaseReturn = hasCompanyPermission(
+    "NEW_PURCH_NOTE_RTN",
     "READ_WRITE",
   );
 
   useEffect(() => {
-    if (!canReadPurchaseReturns || !selectedDepartmentId) {
+    if (!canReadPurchaseReturns || !currentCompany?.id) {
       setLoading(false);
       return;
     }
@@ -95,7 +78,7 @@ export default function PurchaseReturnListPage() {
         setLoading(true);
         setError(null);
         const response = await getPurchaseNotes("user", {
-          departmentId: selectedDepartmentId,
+          companyId: currentCompany.id,
           docType: "Purchase Return",
         });
         setPurchaseReturns(response.data.purchaseNotes ?? []);
@@ -107,7 +90,7 @@ export default function PurchaseReturnListPage() {
     };
 
     loadPurchaseReturns();
-  }, [canReadPurchaseReturns, selectedDepartmentId]);
+  }, [canReadPurchaseReturns, currentCompany?.id]);
 
   const filteredPurchaseReturns = useMemo(() => {
     const value = search.trim().toLowerCase();
@@ -116,9 +99,13 @@ export default function PurchaseReturnListPage() {
     return purchaseReturns.filter((note) =>
       [
         note.company.name,
+        note.company.code,
+        note.department.name,
         note.docType,
         note.docId,
         note.purchaseNo,
+        note.createdBy?.fullName,
+        note.createdBy?.email,
         note.vendorAccount?.accountName,
         note.referenceDocNo,
         sourceMemoLabel(note),
@@ -138,7 +125,7 @@ export default function PurchaseReturnListPage() {
     return (
       <div className="p-6">
         <div className="rounded-2xl border border-dashed bg-background px-6 py-12 text-center text-sm text-muted-foreground">
-          You do not have permission to view purchase returns in this department.
+          You do not have permission to view purchase returns in this company.
         </div>
       </div>
     );
@@ -163,10 +150,10 @@ export default function PurchaseReturnListPage() {
           {canCreatePurchaseReturn && (
             <Button
               className="h-9 rounded-xl"
-              onClick={() => router.push("/user/inventory/inventory-list")}
+              onClick={() => router.push("/user/purchase/new-purchase-return")}
             >
               <RotateCcw className="h-4 w-4" />
-              Return Inventory Items
+              New Purchase Return
             </Button>
           )}
         </div>
@@ -197,10 +184,12 @@ export default function PurchaseReturnListPage() {
         ) : (
           <div className="overflow-hidden rounded-2xl border bg-background">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1500px] text-sm">
+              <table className="w-full min-w-[1700px] text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
                     <th className="px-3 py-3 font-medium">Company</th>
+                    <th className="px-3 py-3 font-medium">Department</th>
+                    <th className="px-3 py-3 font-medium">Performed By</th>
                     <th className="px-3 py-3 font-medium">Doc Type</th>
                     <th className="px-3 py-3 font-medium">Open Date</th>
                     <th className="px-3 py-3 font-medium">Doc ID</th>
@@ -218,6 +207,10 @@ export default function PurchaseReturnListPage() {
                   {paginatedPurchaseReturns.map((note) => (
                     <tr key={note.id} className="border-b last:border-0">
                       <td className="px-3 py-3">{note.company.name}</td>
+                      <td className="px-3 py-3">{note.department.name}</td>
+                      <td className="px-3 py-3">
+                        {note.createdBy?.fullName ?? note.createdBy?.email ?? "-"}
+                      </td>
                       <td className="px-3 py-3">{note.docType}</td>
                       <td className="px-3 py-3">{formatDate(note.openDate)}</td>
                       <td className="px-3 py-3">

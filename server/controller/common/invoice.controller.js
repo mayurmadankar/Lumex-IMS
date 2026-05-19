@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+import {
+  getAccessibleDepartmentIds,
+  userHasDepartmentModuleAccess,
+} from "../../helper/departmentAccess.js";
 import { sendError, sendSuccess } from "../../helper/response.js";
 import prisma from "../../prisma/client.js";
 import { normalizePermissions, permissionAllows } from "../../config/modules.ts";
@@ -94,6 +98,14 @@ const inventoryInvoiceSchema = addDestinationRule(
     notes: optionalString(),
   }),
 );
+
+const invoiceReturnSchema = z.object({
+  companyId: z.string({ required_error: "companyId is required" }).uuid("Invalid company"),
+  inventoryItemId: z.string({ required_error: "inventoryItemId is required" }).uuid("Invalid inventory item"),
+  referenceDocNo: optionalString(),
+  docDate: docDateSchema,
+  notes: optionalString(),
+});
 
 const numberValue = (value) => Number(value ?? 0);
 
@@ -509,6 +521,7 @@ const invoiceInclude = {
   company: { select: { id: true, name: true, code: true } },
   sourceCompany: { select: { id: true, name: true, code: true, status: true } },
   department: { select: { id: true, name: true } },
+  createdBy: { select: { id: true, fullName: true, email: true } },
   account: {
     select: {
       id: true,
@@ -537,6 +550,29 @@ const invoiceInclude = {
           purchaseNote: { select: { id: true, docId: true, purchaseNo: true, docType: true } },
           memo: { select: { id: true, docId: true, memoNo: true, docType: true } },
         },
+      },
+    },
+  },
+};
+
+const invoiceReturnInventoryInclude = {
+  company: { select: { id: true, name: true, code: true } },
+  department: { select: { id: true, name: true } },
+  itemMaster: { select: { id: true, itemId: true, itemName: true, itemType: true, uow: true, uom: true } },
+  vendorAccount: { select: { id: true, accountName: true, accountIndex: true } },
+  purchaseNote: { select: { id: true, docId: true, purchaseNo: true, purchaseFrom: true, docType: true, docDate: true, status: true, paymentTerm: true, currency: true } },
+  memo: { select: { id: true, docId: true, memoNo: true, docType: true, docDate: true, status: true, paymentTerm: true, currency: true } },
+  invoiceItems: {
+    where: {
+      invoice: {
+        docType: "Invoice",
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 1,
+    include: {
+      invoice: {
+        include: invoiceInclude,
       },
     },
   },
@@ -585,9 +621,47 @@ const mapInvoice = (invoice) => ({
   company: invoice.company,
   sourceCompany: invoice.sourceCompany,
   department: invoice.department,
+  createdBy: invoice.createdBy,
   account: invoice.account,
   items: invoice.items?.map(mapInvoiceItem) ?? undefined,
 });
+
+const resolveInvoiceReadScope = async (req) => {
+  const departmentId = String(req.query.departmentId ?? "").trim();
+  const companyId = String(req.query.companyId ?? "").trim();
+
+  if (departmentId) {
+    const canRead = await userHasDepartmentModuleAccess({
+      userId: req.user.userId,
+      userRole: req.user.role,
+      departmentId,
+      module: "INVOICE_LIST",
+      access: "READ_ONLY",
+    });
+
+    return canRead
+      ? { where: { departmentId } }
+      : { error: ["Invoice access denied", 403] };
+  }
+
+  if (!companyId) {
+    return { error: ["companyId or departmentId is required", 400] };
+  }
+
+  const accessibleDepartmentIds = await getAccessibleDepartmentIds({
+    userId: req.user.userId,
+    userRole: req.user.role,
+    companyId,
+    module: "INVOICE_LIST",
+    access: "READ_ONLY",
+  });
+
+  if (accessibleDepartmentIds.length === 0) {
+    return { error: ["Invoice access denied for this company", 403] };
+  }
+
+  return { where: { companyId } };
+};
 
 const firstInvoiceItem = (invoice) => invoice.items?.[0] ?? null;
 
@@ -624,6 +698,49 @@ const mapInvoiceListItem = (invoice) => {
     unitPrice: firstItem ? numberValue(firstItem.unitPrice) : 0,
   };
 };
+
+const mapInvoiceReturnInventoryItem = (item) => ({
+  id: item.id,
+  itemId: item.itemId,
+  lotId: item.lotId,
+  itemType: item.itemType,
+  itemMaster: item.itemMaster,
+  lotName: item.lotName,
+  quantity: item.quantity,
+  weight: numberValue(item.weight),
+  totalCost: numberValue(item.totalCost),
+  labAccountName: item.labAccountName,
+  certificateNo: item.certificateNo,
+  parcelOrStone: item.parcelOrStone,
+  shape: item.shape,
+  color: item.color,
+  clarity: item.clarity,
+  rap: item.rap === null ? null : numberValue(item.rap),
+  mainDiscount: item.mainDiscount === null ? null : numberValue(item.mainDiscount),
+  totalDocPriceGross:
+    item.totalDocPriceGross === null ? null : numberValue(item.totalDocPriceGross),
+  remark: item.remark,
+  departmentAccountName: item.departmentAccountName,
+  locationAccountName: item.locationAccountName,
+  status: item.status,
+  createdAt: normalizeDate(item.createdAt),
+  company: item.company,
+  department: item.department,
+  vendorAccount: item.vendorAccount,
+  purchaseNote: item.purchaseNote
+    ? { ...item.purchaseNote, docDate: normalizeDate(item.purchaseNote.docDate) }
+    : null,
+  memo: item.memo
+    ? { ...item.memo, docDate: normalizeDate(item.memo.docDate) }
+    : null,
+});
+
+const mapInvoiceReturnCandidate = (item) => ({
+  inventoryItem: mapInvoiceReturnInventoryItem(item),
+  invoice: item.invoiceItems?.[0]?.invoice
+    ? mapInvoiceListItem(item.invoiceItems[0].invoice)
+    : null,
+});
 
 export const createInvoice = async (req, res) => {
   const result = manualInvoiceSchema.safeParse(req.body);
@@ -1037,14 +1154,236 @@ export const createInvoiceFromInventory = async (req, res) => {
   }
 };
 
-export const getInvoices = async (req, res) => {
-  const { departmentId, search } = req.query;
+export const getInvoiceReturnItemByLot = async (req, res) => {
+  const companyId = String(req.query.companyId ?? "").trim();
+  const lotId = Number(req.params.lotId);
 
-  if (!departmentId) {
-    return sendError(res, "departmentId is required", 400);
+  if (!companyId) return sendError(res, "companyId is required", 400);
+  if (!Number.isInteger(lotId) || lotId <= 0) {
+    return sendError(res, "Valid lotId is required", 400);
   }
 
-  const where = { departmentId: String(departmentId) };
+  const departmentIds = await getAccessibleDepartmentIds({
+    userId: req.user.userId,
+    userRole: req.user.role,
+    companyId,
+    module: "NEW_INVOICE_RETURN",
+    access: "READ_WRITE",
+  });
+
+  if (departmentIds.length === 0) {
+    return sendError(res, "Invoice return access denied for this company", 403);
+  }
+
+  const inventoryItem = await prisma.inventoryItem.findFirst({
+    where: {
+      companyId,
+      departmentId: { in: departmentIds },
+      lotId,
+      status: "SOLD",
+      invoiceItems: {
+        some: {
+          invoice: {
+            docType: "Invoice",
+          },
+        },
+      },
+    },
+    include: invoiceReturnInventoryInclude,
+  });
+
+  if (!inventoryItem) {
+    return sendError(res, "Sold invoice item not found for this Lot ID", 404);
+  }
+
+  if (!inventoryItem.invoiceItems?.[0]?.invoice) {
+    return sendError(res, "Original invoice not found for this Lot ID", 404);
+  }
+
+  return sendSuccess(res, "Invoice return item retrieved successfully", {
+    invoiceReturnItem: mapInvoiceReturnCandidate(inventoryItem),
+  });
+};
+
+export const returnInvoiceItem = async (req, res) => {
+  const result = invoiceReturnSchema.safeParse(req.body);
+  if (!result.success) {
+    return sendError(res, "Validation failed", 400, result.error.flatten().fieldErrors);
+  }
+
+  const data = result.data;
+  const inventoryItem = await prisma.inventoryItem.findFirst({
+    where: {
+      id: data.inventoryItemId,
+      companyId: data.companyId,
+      status: "SOLD",
+      invoiceItems: {
+        some: {
+          invoice: {
+            docType: "Invoice",
+          },
+        },
+      },
+    },
+    include: invoiceReturnInventoryInclude,
+  });
+
+  if (!inventoryItem) {
+    return sendError(res, "Sold invoice item not found", 404);
+  }
+
+  const originalInvoice = inventoryItem.invoiceItems?.[0]?.invoice;
+  const originalLine = inventoryItem.invoiceItems?.[0];
+  if (!originalInvoice || !originalLine) {
+    return sendError(res, "Original invoice not found for selected item", 404);
+  }
+
+  const canReturn = await userHasDepartmentModuleAccess({
+    userId: req.user.userId,
+    userRole: req.user.role,
+    departmentId: inventoryItem.departmentId,
+    module: "NEW_INVOICE_RETURN",
+    access: "READ_WRITE",
+  });
+
+  if (!canReturn) {
+    return sendError(res, "You do not have invoice return access for this item department", 403);
+  }
+
+  const referenceDocNo =
+    data.referenceDocNo ?? `Invoice Return: ${originalInvoice.invoiceNo}`;
+  if (!(await ensureUniqueReference({ companyId: data.companyId, referenceDocNo }))) {
+    return sendError(res, "Reference Doc No already exists for this company", 409, {
+      referenceDocNo: ["Reference Doc No already exists for this company"],
+    });
+  }
+
+  const totalAmount = numberValue(originalLine.totalAmount);
+  const unitPrice = numberValue(originalLine.unitPrice);
+  const weight = numberValue(originalLine.weight);
+  const remark = data.notes ?? `Return of invoice ${originalInvoice.invoiceNo}`;
+
+  try {
+    const invoiceReturn = await prisma.$transaction(async (tx) => {
+      const sequence = await reserveInvoiceSequence({
+        tx,
+        companyId: data.companyId,
+      });
+      const invoiceNo = buildInvoiceNo(
+        inventoryItem.company,
+        sequence.invoiceNumber,
+      );
+
+      const created = await tx.invoice.create({
+        data: {
+          docId: sequence.documentNumber,
+          invoiceNo,
+          docType: "Invoice Return",
+          invoiceType: originalInvoice.invoiceType,
+          docDate: parseDate(data.docDate),
+          referenceDocNo,
+          docQty: originalLine.quantity,
+          docWeight: weight,
+          subtotalAmount: totalAmount,
+          discountAmount: 0,
+          taxAmount: 0,
+          totalAmount,
+          balanceAmount: 0,
+          currency: originalInvoice.currency,
+          notes: remark,
+          specialInstructions: null,
+          status: "ACTIVE",
+          companyId: data.companyId,
+          departmentId: inventoryItem.departmentId,
+          accountId: originalInvoice.accountId ?? null,
+          sourceCompanyId: originalInvoice.sourceCompanyId ?? null,
+          createdById: req.user.userId,
+          items: {
+            create: {
+              inventoryItemId: null,
+              itemMasterId: inventoryItem.itemMasterId,
+              itemId: inventoryItem.itemId,
+              lotId: inventoryItem.lotId,
+              itemName: originalLine.itemName,
+              itemDescription: originalLine.itemDescription,
+              quantity: originalLine.quantity,
+              unitPrice,
+              totalAmount,
+              weight,
+              labAccountName: originalLine.labAccountName,
+              certificateNo: originalLine.certificateNo,
+              parcelOrStone: originalLine.parcelOrStone,
+              remark,
+            },
+          },
+        },
+      });
+
+      const updateResult = await tx.inventoryItem.updateMany({
+        where: {
+          id: inventoryItem.id,
+          companyId: data.companyId,
+          status: "SOLD",
+        },
+        data: { status: "STOCK" },
+      });
+
+      if (updateResult.count !== 1) {
+        throw new Error("INVENTORY_ITEM_CHANGED");
+      }
+
+      await createInventoryMovements({
+        tx,
+        items: [inventoryItem],
+        event: "INVOICE_RETURN",
+        fromStatus: "SOLD",
+        toStatus: "STOCK",
+        documentId: created.id,
+        documentNo: created.invoiceNo,
+        docId: created.docId,
+        userId: req.user.userId,
+        metadata: {
+          referenceDocNo,
+          originalInvoiceId: originalInvoice.id,
+          originalInvoiceNo: originalInvoice.invoiceNo,
+          lotId: inventoryItem.lotId,
+        },
+      });
+
+      return tx.invoice.findUnique({
+        where: { id: created.id },
+        include: invoiceInclude,
+      });
+    });
+
+    return sendSuccess(
+      res,
+      "Invoice return created successfully",
+      { invoice: mapInvoice(invoiceReturn) },
+      201,
+    );
+  } catch (error) {
+    if (error?.message === "INVENTORY_ITEM_CHANGED") {
+      return sendError(
+        res,
+        "Selected inventory item changed before invoice return was completed. Refresh and try again.",
+        409,
+      );
+    }
+
+    throw error;
+  }
+};
+
+export const getInvoices = async (req, res) => {
+  const { search } = req.query;
+  const scope = await resolveInvoiceReadScope(req);
+
+  if (scope.error) {
+    return sendError(res, scope.error[0], scope.error[1]);
+  }
+
+  const where = { ...scope.where };
   const searchValue = String(search ?? "").trim();
 
   if (searchValue) {
@@ -1053,6 +1392,9 @@ export const getInvoices = async (req, res) => {
       { invoiceNo: { contains: searchValue, mode: "insensitive" } },
       { referenceDocNo: { contains: searchValue, mode: "insensitive" } },
       { notes: { contains: searchValue, mode: "insensitive" } },
+      { department: { name: { contains: searchValue, mode: "insensitive" } } },
+      { createdBy: { fullName: { contains: searchValue, mode: "insensitive" } } },
+      { createdBy: { email: { contains: searchValue, mode: "insensitive" } } },
       { account: { accountName: { contains: searchValue, mode: "insensitive" } } },
       { sourceCompany: { name: { contains: searchValue, mode: "insensitive" } } },
       { sourceCompany: { code: { contains: searchValue, mode: "insensitive" } } },
@@ -1074,14 +1416,14 @@ export const getInvoices = async (req, res) => {
 
 export const getInvoice = async (req, res) => {
   const { id } = req.params;
-  const { departmentId } = req.query;
+  const scope = await resolveInvoiceReadScope(req);
 
-  if (!departmentId) {
-    return sendError(res, "departmentId is required", 400);
+  if (scope.error) {
+    return sendError(res, scope.error[0], scope.error[1]);
   }
 
   const invoice = await prisma.invoice.findFirst({
-    where: { id, departmentId: String(departmentId) },
+    where: { id, ...scope.where },
     include: invoiceInclude,
   });
 

@@ -2,6 +2,12 @@ import axiosInstance from "@/api/axios";
 
 type Scope = "user";
 
+type TransactionUser = {
+  id: string;
+  fullName: string;
+  email: string;
+};
+
 export type MemoItemPayload = {
   itemMasterId: string;
   lotName: string;
@@ -74,6 +80,7 @@ export type MemoListItem = {
     id: string;
     name: string;
   };
+  createdBy?: TransactionUser | null;
   account: {
     id: string;
     accountName: string;
@@ -181,7 +188,8 @@ export async function createMemo(scope: Scope, payload: MemoPayload) {
 export async function getMemos(
   scope: Scope,
   params: {
-    departmentId: string;
+    departmentId?: string;
+    companyId?: string;
     search?: string;
     docType?: string;
   },
@@ -194,7 +202,8 @@ export async function getMemo(
   scope: Scope,
   id: string,
   params: {
-    departmentId: string;
+    departmentId?: string;
+    companyId?: string;
     docType?: string;
   },
 ) {
@@ -227,6 +236,21 @@ export async function getMemoInventoryItems(
   const response = await axiosInstance.get(`/api/${scope}/memo-inventory-items`, {
     params,
   });
+  return response.data;
+}
+
+export async function getMemoInventoryItemByLot(
+  scope: Scope,
+  lotId: number | string,
+  params: {
+    departmentId?: string;
+    companyId?: string;
+  },
+) {
+  const response = await axiosInstance.get(
+    `/api/${scope}/memo-inventory-items/lot/${lotId}`,
+    { params },
+  );
   return response.data;
 }
 

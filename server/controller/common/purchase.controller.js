@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+import {
+  getAccessibleDepartmentIds,
+  getAccessibleDepartmentIdsForAnyModule,
+  userHasAnyDepartmentModuleAccess,
+  userHasDepartmentModuleAccess,
+} from "../../helper/departmentAccess.js";
 import { sendError, sendSuccess } from "../../helper/response.js";
 import prisma from "../../prisma/client.js";
 
@@ -241,6 +247,7 @@ const mapPurchaseNote = (note) => ({
   createdAt: normalizeDate(note.createdAt),
   company: note.company,
   department: note.department,
+  createdBy: note.createdBy,
   vendorAccount: note.vendorAccount,
   sourceCompany: note.sourceCompany,
   sourceMemos: mapSourceMemos(purchaseDocumentItems(note)),
@@ -407,6 +414,7 @@ const buildTotals = (items) =>
 const purchaseNoteInclude = {
   company: { select: { id: true, name: true, code: true } },
   department: { select: { id: true, name: true } },
+  createdBy: { select: { id: true, fullName: true, email: true } },
   vendorAccount: { select: { id: true, accountName: true, accountIndex: true } },
   sourceCompany: { select: { id: true, name: true, code: true } },
   inventoryItems: {
@@ -435,6 +443,50 @@ const purchaseNoteInclude = {
       memoReturn: { select: { id: true, docId: true, memoNo: true, docType: true, docDate: true, status: true, paymentTerm: true, currency: true } },
     },
   },
+};
+
+const purchaseDocumentReadChecks = (docType) =>
+  docType === "Purchase Return"
+    ? [
+        { module: "NEW_PURCH_NOTE_RTN", access: "READ_WRITE" },
+        { module: "PURCHASE_NOTE_LIST", access: "READ_ONLY" },
+      ]
+    : [{ module: "PURCHASE_NOTE_LIST", access: "READ_ONLY" }];
+
+const resolvePurchaseDocumentReadScope = async (req, docType) => {
+  const departmentId = String(req.query.departmentId ?? "").trim();
+  const companyId = String(req.query.companyId ?? "").trim();
+  const checks = purchaseDocumentReadChecks(docType);
+
+  if (departmentId) {
+    const canRead = await userHasAnyDepartmentModuleAccess({
+      userId: req.user.userId,
+      userRole: req.user.role,
+      departmentId,
+      checks,
+    });
+
+    return canRead
+      ? { where: { departmentId } }
+      : { error: ["Purchase document access denied", 403] };
+  }
+
+  if (!companyId) {
+    return { error: ["companyId or departmentId is required", 400] };
+  }
+
+  const accessibleDepartmentIds = await getAccessibleDepartmentIdsForAnyModule({
+    userId: req.user.userId,
+    userRole: req.user.role,
+    companyId,
+    checks,
+  });
+
+  if (accessibleDepartmentIds.length === 0) {
+    return { error: ["Purchase document access denied for this company", 403] };
+  }
+
+  return { where: { companyId } };
 };
 
 const inventoryItemInclude = {
@@ -737,14 +789,15 @@ export const returnInventoryItems = async (req, res) => {
 };
 
 export const getPurchaseNotes = async (req, res) => {
-  const { departmentId, search, docType } = req.query;
+  const { search, docType } = req.query;
+  const docTypeValue = String(docType ?? "").trim();
+  const scope = await resolvePurchaseDocumentReadScope(req, docTypeValue);
 
-  if (!departmentId) {
-    return sendError(res, "departmentId is required", 400);
+  if (scope.error) {
+    return sendError(res, scope.error[0], scope.error[1]);
   }
 
-  const where = { departmentId: String(departmentId) };
-  const docTypeValue = String(docType ?? "").trim();
+  const where = { ...scope.where };
   const searchValue = String(search ?? "").trim();
 
   if (docTypeValue) {
@@ -757,6 +810,9 @@ export const getPurchaseNotes = async (req, res) => {
       { purchaseNo: { contains: searchValue, mode: "insensitive" } },
       { docType: { contains: searchValue, mode: "insensitive" } },
       { referenceDocNo: { contains: searchValue, mode: "insensitive" } },
+      { department: { name: { contains: searchValue, mode: "insensitive" } } },
+      { createdBy: { fullName: { contains: searchValue, mode: "insensitive" } } },
+      { createdBy: { email: { contains: searchValue, mode: "insensitive" } } },
       { vendorAccount: { accountName: { contains: searchValue, mode: "insensitive" } } },
     ].filter(Boolean);
   }
@@ -774,14 +830,15 @@ export const getPurchaseNotes = async (req, res) => {
 
 export const getPurchaseNote = async (req, res) => {
   const { id } = req.params;
-  const { departmentId, docType } = req.query;
+  const { docType } = req.query;
+  const docTypeValue = String(docType ?? "").trim();
+  const scope = await resolvePurchaseDocumentReadScope(req, docTypeValue);
 
-  if (!departmentId) {
-    return sendError(res, "departmentId is required", 400);
+  if (scope.error) {
+    return sendError(res, scope.error[0], scope.error[1]);
   }
 
-  const where = { id, departmentId: String(departmentId) };
-  const docTypeValue = String(docType ?? "").trim();
+  const where = { id, ...scope.where };
   if (docTypeValue) {
     where.docType = docTypeValue;
   }
@@ -799,17 +856,48 @@ export const getPurchaseNote = async (req, res) => {
 };
 
 export const getInventoryItems = async (req, res) => {
-  const { departmentId, search } = req.query;
+  const { departmentId, companyId, search } = req.query;
+  let departmentIds = [];
 
-  if (!departmentId) {
-    return sendError(res, "departmentId is required", 400);
+  if (departmentId) {
+    const canRead = await userHasDepartmentModuleAccess({
+      userId: req.user.userId,
+      userRole: req.user.role,
+      departmentId: String(departmentId),
+      module: "INVENTORY_LIST",
+      access: "READ_ONLY",
+    });
+
+    if (!canRead) return sendError(res, "Inventory access denied", 403);
+    departmentIds = [String(departmentId)];
+  } else {
+    if (!companyId) {
+      return sendError(res, "companyId or departmentId is required", 400);
+    }
+
+    departmentIds = await getAccessibleDepartmentIds({
+      userId: req.user.userId,
+      userRole: req.user.role,
+      companyId: String(companyId),
+      module: "INVENTORY_LIST",
+      access: "READ_ONLY",
+    });
+
+    if (departmentIds.length === 0) {
+      return sendError(res, "Inventory access denied for this company", 403);
+    }
   }
 
   const where = {
-    departmentId: String(departmentId),
+    ...(departmentId ? { departmentId: { in: departmentIds } } : {}),
     status: "STOCK",
     purchaseNoteId: { not: null },
   };
+
+  if (companyId) {
+    where.companyId = String(companyId);
+  }
+
   const searchValue = String(search ?? "").trim();
 
   if (searchValue) {
@@ -844,20 +932,76 @@ export const getInventoryItems = async (req, res) => {
 };
 
 export const getInventoryItemByLot = async (req, res) => {
-  const { departmentId } = req.query;
+  const { departmentId, companyId } = req.query;
   const lotId = Number(req.params.lotId);
-
-  if (!departmentId) {
-    return sendError(res, "departmentId is required", 400);
-  }
 
   if (!Number.isInteger(lotId) || lotId <= 0) {
     return sendError(res, "Valid lotId is required", 400);
   }
 
+  let departmentIds = [];
+  if (departmentId) {
+    const canRead = await userHasAnyDepartmentModuleAccess({
+      userId: req.user.userId,
+      userRole: req.user.role,
+      departmentId: String(departmentId),
+      checks: [
+        { module: "INVENTORY_LIST", access: "READ_ONLY" },
+        { module: "NEW_PURCH_NOTE_RTN", access: "READ_WRITE" },
+      ],
+    });
+
+    if (!canRead) return sendError(res, "Inventory access denied", 403);
+    departmentIds = [String(departmentId)];
+  } else {
+    if (!companyId) {
+      return sendError(res, "companyId or departmentId is required", 400);
+    }
+
+    const [
+      inventoryDepartmentIds,
+      transferDepartmentIds,
+      purchaseReturnDepartmentIds,
+    ] = await Promise.all([
+      getAccessibleDepartmentIds({
+        userId: req.user.userId,
+        userRole: req.user.role,
+        companyId: String(companyId),
+        module: "INVENTORY_LIST",
+        access: "READ_ONLY",
+      }),
+      getAccessibleDepartmentIds({
+        userId: req.user.userId,
+        userRole: req.user.role,
+        companyId: String(companyId),
+        module: "NEW_TRANSFER",
+        access: "READ_WRITE",
+      }),
+      getAccessibleDepartmentIds({
+        userId: req.user.userId,
+        userRole: req.user.role,
+        companyId: String(companyId),
+        module: "NEW_PURCH_NOTE_RTN",
+        access: "READ_WRITE",
+      }),
+    ]);
+    departmentIds = [
+      ...new Set([
+        ...inventoryDepartmentIds,
+        ...transferDepartmentIds,
+        ...purchaseReturnDepartmentIds,
+      ]),
+    ];
+
+    if (departmentIds.length === 0) {
+      return sendError(res, "Inventory item access denied for this company", 403);
+    }
+  }
+
   const inventoryItem = await prisma.inventoryItem.findFirst({
     where: {
-      departmentId: String(departmentId),
+      departmentId: { in: departmentIds },
+      ...(companyId ? { companyId: String(companyId) } : {}),
       lotId,
       status: "STOCK",
       purchaseNoteId: { not: null },

@@ -354,7 +354,7 @@ export default function UserPage() {
     }
 
     if (action.key === "MEMO_IN_RETURN") {
-      router.push("/user/memo-in/memo-returns");
+      router.push("/user/memo-in/new-memo-return");
       return;
     }
 
@@ -379,7 +379,7 @@ export default function UserPage() {
     }
 
     if (action.key === "NEW_PURCH_NOTE_RTN") {
-      router.push("/user/purchase/purchase-returns");
+      router.push("/user/purchase/new-purchase-return");
       return;
     }
 
@@ -390,6 +390,26 @@ export default function UserPage() {
 
     if (action.key === "NEW_INVOICE") {
       router.push("/user/invoice/new-invoice");
+      return;
+    }
+
+    if (action.key === "NEW_INVOICE_RETURN") {
+      router.push("/user/invoice/new-invoice-return");
+      return;
+    }
+
+    if (action.key === "TRANSFER_LIST") {
+      router.push("/user/transfer/transfers");
+      return;
+    }
+
+    if (action.key === "NEW_TRANSFER") {
+      router.push("/user/transfer/new-transfer");
+      return;
+    }
+
+    if (action.key === "NEW_TRANSFER_RETURN") {
+      router.push("/user/transfer/new-transfer-return");
       return;
     }
 

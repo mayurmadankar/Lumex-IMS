@@ -3,31 +3,14 @@ import expressErrorHandler from "../helper/expressErrorHandler.js";
 import { getAccountTypes } from "../controller/user/accountType.controller.js";
 import { getCities, getCountries, getStates } from "../controller/common/country.controller.js";
 import { createAccount, getAccount, getAccounts, updateAccount } from "../controller/common/account.controller.js";
-import { createInvoice, createInvoiceFromInventory, getInvoice, getInvoices } from "../controller/common/invoice.controller.js";
+import { createInvoice, createInvoiceFromInventory, getInvoice, getInvoiceReturnItemByLot, getInvoices, returnInvoiceItem } from "../controller/common/invoice.controller.js";
 import { createItem, getItems } from "../controller/common/item.controller.js";
-import { createMemo, deleteMemo, getMemo, getMemoInventoryItems, getMemos, purchaseMemoInventoryItems, returnMemoInventoryItems } from "../controller/common/memo.controller.js";
+import { createMemo, deleteMemo, getMemo, getMemoInventoryItemByLot, getMemoInventoryItems, getMemos, purchaseMemoInventoryItems, returnMemoInventoryItems } from "../controller/common/memo.controller.js";
 import { createPurchaseNote, getInventoryItemByLot, getInventoryItems, getPurchaseNote, getPurchaseNotes, returnInventoryItems } from "../controller/common/purchase.controller.js";
+import { createTransfer, createTransferReturn, getCompanyDepartments, getDepartmentUsers, getTransferReturnItemByLot, getTransfers } from "../controller/common/transfer.controller.js";
 import { authorizeDepartmentModule } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
-
-const authorizePurchaseDocumentsRead = (req, res, next) => {
-  const isReturnList = String(req.query.docType ?? "").trim() === "Purchase Return";
-  return authorizeDepartmentModule({
-    module: isReturnList ? "NEW_PURCH_NOTE_RTN" : "PURCHASE_NOTE_LIST",
-    access: isReturnList ? "READ_WRITE" : "READ_ONLY",
-    departmentIdFrom: "query",
-  })(req, res, next);
-};
-
-const authorizeMemoDocumentsRead = (req, res, next) => {
-  const isReturnList = String(req.query.docType ?? "").trim() === "Memo Return";
-  return authorizeDepartmentModule({
-    module: isReturnList ? "MEMO_IN_RETURN" : "MEMO_IN_LIST",
-    access: isReturnList ? "READ_WRITE" : "READ_ONLY",
-    departmentIdFrom: "query",
-  })(req, res, next);
-};
 
 // Account Type
 router.get("/account-type", expressErrorHandler(getAccountTypes));
@@ -75,27 +58,22 @@ router.post(
 );
 router.get(
   "/purchase-notes",
-  authorizePurchaseDocumentsRead,
   expressErrorHandler(getPurchaseNotes),
 );
 router.get(
   "/purchase-notes/:id",
-  authorizePurchaseDocumentsRead,
   expressErrorHandler(getPurchaseNote),
 );
 router.get(
   "/inventory-items",
-  authorizeDepartmentModule({ module: "INVENTORY_LIST", access: "READ_ONLY", departmentIdFrom: "query" }),
   expressErrorHandler(getInventoryItems),
 );
 router.get(
   "/inventory-items/lot/:lotId",
-  authorizeDepartmentModule({ module: "INVENTORY_LIST", access: "READ_ONLY", departmentIdFrom: "query" }),
   expressErrorHandler(getInventoryItemByLot),
 );
 router.post(
   "/inventory-items/return",
-  authorizeDepartmentModule({ module: "INVENTORY_LIST", access: "READ_ONLY", departmentIdFrom: "body" }),
   authorizeDepartmentModule({ module: "NEW_PURCH_NOTE_RTN", access: "READ_WRITE", departmentIdFrom: "body" }),
   expressErrorHandler(returnInventoryItems),
 );
@@ -105,6 +83,10 @@ router.post(
   authorizeDepartmentModule({ module: "NEW_INVOICE", access: "READ_WRITE", departmentIdFrom: "body" }),
   expressErrorHandler(createInvoiceFromInventory),
 );
+router.get(
+  "/invoice-return-items/lot/:lotId",
+  expressErrorHandler(getInvoiceReturnItemByLot),
+);
 
 // Invoice
 router.post(
@@ -112,14 +94,16 @@ router.post(
   authorizeDepartmentModule({ module: "NEW_INVOICE", access: "READ_WRITE", departmentIdFrom: "body" }),
   expressErrorHandler(createInvoice),
 );
+router.post(
+  "/invoices/return",
+  expressErrorHandler(returnInvoiceItem),
+);
 router.get(
   "/invoices",
-  authorizeDepartmentModule({ module: "INVOICE_LIST", access: "READ_ONLY", departmentIdFrom: "query" }),
   expressErrorHandler(getInvoices),
 );
 router.get(
   "/invoices/:id",
-  authorizeDepartmentModule({ module: "INVOICE_LIST", access: "READ_ONLY", departmentIdFrom: "query" }),
   expressErrorHandler(getInvoice),
 );
 
@@ -131,13 +115,16 @@ router.post(
 );
 router.get(
   "/memos",
-  authorizeMemoDocumentsRead,
   expressErrorHandler(getMemos),
 );
 router.get(
   "/memo-inventory-items",
   authorizeDepartmentModule({ module: "MEMO_IN_INVENTORY", access: "READ_ONLY", departmentIdFrom: "query" }),
   expressErrorHandler(getMemoInventoryItems),
+);
+router.get(
+  "/memo-inventory-items/lot/:lotId",
+  expressErrorHandler(getMemoInventoryItemByLot),
 );
 router.post(
   "/memo-inventory-items/purchase",
@@ -147,13 +134,11 @@ router.post(
 );
 router.post(
   "/memo-inventory-items/return",
-  authorizeDepartmentModule({ module: "MEMO_IN_INVENTORY", access: "READ_ONLY", departmentIdFrom: "body" }),
   authorizeDepartmentModule({ module: "MEMO_IN_RETURN", access: "READ_WRITE", departmentIdFrom: "body" }),
   expressErrorHandler(returnMemoInventoryItems),
 );
 router.get(
   "/memos/:id",
-  authorizeMemoDocumentsRead,
   expressErrorHandler(getMemo),
 );
 router.delete(
@@ -161,5 +146,13 @@ router.delete(
   authorizeDepartmentModule({ module: "NEW_MEMO_IN", access: "READ_WRITE", departmentIdFrom: "query" }),
   expressErrorHandler(deleteMemo),
 );
+
+// Transfer
+router.get("/transfer-departments", expressErrorHandler(getCompanyDepartments));
+router.get("/transfer-departments/:departmentId/users", expressErrorHandler(getDepartmentUsers));
+router.post("/transfers", expressErrorHandler(createTransfer));
+router.get("/transfer-return-items/lot/:lotId", expressErrorHandler(getTransferReturnItemByLot));
+router.post("/transfers/return", expressErrorHandler(createTransferReturn));
+router.get("/transfers", expressErrorHandler(getTransfers));
 
 export default router;

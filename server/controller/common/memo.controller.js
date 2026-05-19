@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+import {
+  getAccessibleDepartmentIdsForAnyModule,
+  userHasAnyDepartmentModuleAccess,
+} from "../../helper/departmentAccess.js";
 import { sendError, sendSuccess } from "../../helper/response.js";
 import prisma from "../../prisma/client.js";
 
@@ -284,6 +288,7 @@ const inventoryItemInclude = {
 const memoInclude = {
   company: { select: { id: true, name: true, code: true } },
   department: { select: { id: true, name: true } },
+  createdBy: { select: { id: true, fullName: true, email: true } },
   account: {
     select: {
       id: true,
@@ -429,9 +434,54 @@ const mapMemo = (memo) => ({
   createdAt: normalizeDate(memo.createdAt),
   company: memo.company,
   department: memo.department,
+  createdBy: memo.createdBy,
   account: memo.account,
   items: memoDocumentItems(memo)?.map(mapInventoryItem) ?? undefined,
 });
+
+const memoDocumentReadChecks = (docType) =>
+  docType === "Memo Return"
+    ? [
+        { module: "MEMO_IN_RETURN", access: "READ_WRITE" },
+        { module: "MEMO_IN_LIST", access: "READ_ONLY" },
+      ]
+    : [{ module: "MEMO_IN_LIST", access: "READ_ONLY" }];
+
+const resolveMemoDocumentReadScope = async (req, docType) => {
+  const departmentId = String(req.query.departmentId ?? "").trim();
+  const companyId = String(req.query.companyId ?? "").trim();
+  const checks = memoDocumentReadChecks(docType);
+
+  if (departmentId) {
+    const canRead = await userHasAnyDepartmentModuleAccess({
+      userId: req.user.userId,
+      userRole: req.user.role,
+      departmentId,
+      checks,
+    });
+
+    return canRead
+      ? { where: { departmentId } }
+      : { error: ["Memo document access denied", 403] };
+  }
+
+  if (!companyId) {
+    return { error: ["companyId or departmentId is required", 400] };
+  }
+
+  const accessibleDepartmentIds = await getAccessibleDepartmentIdsForAnyModule({
+    userId: req.user.userId,
+    userRole: req.user.role,
+    companyId,
+    checks,
+  });
+
+  if (accessibleDepartmentIds.length === 0) {
+    return { error: ["Memo document access denied for this company", 403] };
+  }
+
+  return { where: { companyId } };
+};
 
 const mapSourceMemos = (items = []) =>
   [
@@ -1016,15 +1066,77 @@ export const getMemoInventoryItems = async (req, res) => {
   });
 };
 
-export const getMemos = async (req, res) => {
-  const { departmentId, search, docType } = req.query;
+export const getMemoInventoryItemByLot = async (req, res) => {
+  const { departmentId, companyId } = req.query;
+  const lotId = Number(req.params.lotId);
 
-  if (!departmentId) {
-    return sendError(res, "departmentId is required", 400);
+  if (!Number.isInteger(lotId) || lotId <= 0) {
+    return sendError(res, "Valid lotId is required", 400);
   }
 
-  const where = { departmentId: String(departmentId) };
+  let departmentIds = [];
+  const checks = [
+    { module: "MEMO_IN_INVENTORY", access: "READ_ONLY" },
+    { module: "MEMO_IN_RETURN", access: "READ_WRITE" },
+  ];
+
+  if (departmentId) {
+    const canRead = await userHasAnyDepartmentModuleAccess({
+      userId: req.user.userId,
+      userRole: req.user.role,
+      departmentId: String(departmentId),
+      checks,
+    });
+
+    if (!canRead) return sendError(res, "Memo inventory access denied", 403);
+    departmentIds = [String(departmentId)];
+  } else {
+    if (!companyId) {
+      return sendError(res, "companyId or departmentId is required", 400);
+    }
+
+    departmentIds = await getAccessibleDepartmentIdsForAnyModule({
+      userId: req.user.userId,
+      userRole: req.user.role,
+      companyId: String(companyId),
+      checks,
+    });
+
+    if (departmentIds.length === 0) {
+      return sendError(res, "Memo inventory access denied for this company", 403);
+    }
+  }
+
+  const inventoryItem = await prisma.inventoryItem.findFirst({
+    where: {
+      departmentId: { in: departmentIds },
+      ...(companyId ? { companyId: String(companyId) } : {}),
+      lotId,
+      status: "MEMO",
+      memoId: { not: null },
+    },
+    include: inventoryItemInclude,
+  });
+
+  if (!inventoryItem) {
+    return sendError(res, "Memo item not found for this Lot ID", 404);
+  }
+
+  return sendSuccess(res, "Memo inventory item retrieved successfully", {
+    inventoryItem: mapInventoryItem(inventoryItem),
+  });
+};
+
+export const getMemos = async (req, res) => {
+  const { search, docType } = req.query;
   const docTypeValue = String(docType ?? "").trim();
+  const scope = await resolveMemoDocumentReadScope(req, docTypeValue);
+
+  if (scope.error) {
+    return sendError(res, scope.error[0], scope.error[1]);
+  }
+
+  const where = { ...scope.where };
   const searchValue = String(search ?? "").trim();
 
   if (docTypeValue) {
@@ -1037,6 +1149,9 @@ export const getMemos = async (req, res) => {
       { memoNo: { contains: searchValue, mode: "insensitive" } },
       { docType: { contains: searchValue, mode: "insensitive" } },
       { referenceDocNo: { contains: searchValue, mode: "insensitive" } },
+      { department: { name: { contains: searchValue, mode: "insensitive" } } },
+      { createdBy: { fullName: { contains: searchValue, mode: "insensitive" } } },
+      { createdBy: { email: { contains: searchValue, mode: "insensitive" } } },
       { account: { accountName: { contains: searchValue, mode: "insensitive" } } },
     ].filter(Boolean);
   }
@@ -1054,14 +1169,15 @@ export const getMemos = async (req, res) => {
 
 export const getMemo = async (req, res) => {
   const { id } = req.params;
-  const { departmentId, docType } = req.query;
+  const { docType } = req.query;
+  const docTypeValue = String(docType ?? "").trim();
+  const scope = await resolveMemoDocumentReadScope(req, docTypeValue);
 
-  if (!departmentId) {
-    return sendError(res, "departmentId is required", 400);
+  if (scope.error) {
+    return sendError(res, scope.error[0], scope.error[1]);
   }
 
-  const where = { id, departmentId: String(departmentId) };
-  const docTypeValue = String(docType ?? "").trim();
+  const where = { id, ...scope.where };
   if (docTypeValue) {
     where.docType = docTypeValue;
   }

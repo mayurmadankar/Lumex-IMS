@@ -27,6 +27,8 @@ model User {
   purchaseNotesCreated  PurchaseNote[]         @relation("PurchaseNoteCreatedBy")
   memosCreated          Memo[]                 @relation("MemoCreatedBy")
   invoicesCreated       Invoice[]              @relation("InvoiceCreatedBy")
+  transfersCreated      Transfer[]             @relation("TransferCreatedBy")
+  transfersReceived     Transfer[]             @relation("TransferToUser")
   inventoryItemsCreated InventoryItem[]        @relation("InventoryItemCreatedBy")
   itemMastersCreated    ItemMaster[]           @relation("ItemMasterCreatedBy")
 }
@@ -65,6 +67,7 @@ model Company {
   memos               Memo[]
   invoices            Invoice[]
   sourceInvoices      Invoice[]          @relation("InvoiceSourceCompany")
+  transfers           Transfer[]         @relation("TransferCompany")
   inventoryItems      InventoryItem[]
   itemMasters         ItemMaster[]
   itemSequence        ItemSequence?
@@ -138,6 +141,8 @@ model Department {
   purchaseNotes     PurchaseNote[]
   memos             Memo[]
   invoices          Invoice[]
+  outgoingTransfers Transfer[]             @relation("TransferFromDepartment")
+  incomingTransfers Transfer[]             @relation("TransferToDepartment")
   inventoryItems    InventoryItem[]
 
   @@unique([companyId, name])
@@ -158,6 +163,7 @@ model InventorySequence {
   nextPurchaseNoteNumber Int      @default(1)
   nextMemoNumber         Int      @default(1)
   nextInvoiceNumber      Int      @default(1)
+  nextTransferNumber     Int      @default(1)
   updatedAt              DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id])
@@ -355,6 +361,7 @@ model InventoryItem {
 
   invoiceItems       InvoiceItem[]
   inventoryMovements InventoryMovement[]
+  transfers          Transfer[]          @relation("TransferInventoryItem")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -392,6 +399,45 @@ model InventoryMovement {
   @@index([companyId, occurredAt])
   @@index([departmentId, occurredAt])
   @@index([documentType, documentId])
+}
+
+model Transfer {
+  id             String   @id @default(uuid())
+  docId          Int
+  transferNo     String
+  docDate        DateTime @default(now())
+  referenceDocNo String?
+  notes          String?
+
+  companyId String
+  company   Company @relation("TransferCompany", fields: [companyId], references: [id])
+
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation("TransferInventoryItem", fields: [inventoryItemId], references: [id], onDelete: Restrict)
+
+  fromDepartmentId String
+  fromDepartment   Department @relation("TransferFromDepartment", fields: [fromDepartmentId], references: [id], onDelete: Restrict)
+
+  toDepartmentId String
+  toDepartment   Department @relation("TransferToDepartment", fields: [toDepartmentId], references: [id], onDelete: Restrict)
+
+  toUserId String?
+  toUser   User? @relation("TransferToUser", fields: [toUserId], references: [id], onDelete: SetNull)
+
+  createdById String
+  createdBy   User @relation("TransferCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, transferNo])
+  @@unique([companyId, docId])
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([fromDepartmentId, createdAt(sort: Desc)])
+  @@index([toDepartmentId, createdAt(sort: Desc)])
+  @@index([inventoryItemId])
+  @@index([toUserId])
+  @@index([createdById])
 }
 
 model Memo {
@@ -617,12 +663,14 @@ enum InventoryMovementType {
   PURCHASE_RETURN
   INVOICE_OUT
   INVOICE_RETURN
+  TRANSFER
 }
 
 enum InventoryMovementDocumentType {
   PURCHASE_NOTE
   MEMO
   INVOICE
+  TRANSFER
 }
 
 enum UnitOfWeight {
@@ -675,6 +723,7 @@ enum AuditEntityType {
   MEMO
   INVENTORY_ITEM
   INVOICE
+  TRANSFER
   PAYMENT
   USER
   DEPARTMENT

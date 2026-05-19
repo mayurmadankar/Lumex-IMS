@@ -6,6 +6,12 @@ type ParcelOrStone = "PARCEL" | "STONE";
 type DocumentStatus = "ACTIVE" | "CANCELLED";
 type LotStatus = "STOCK" | "MEMO" | "SOLD" | "RETURNED";
 
+type TransactionUser = {
+  id: string;
+  fullName: string;
+  email: string;
+};
+
 export type PurchaseNoteItemPayload = {
   itemMasterId: string;
   lotName: string;
@@ -142,6 +148,7 @@ export type PurchaseNoteListItem = {
     id: string;
     name: string;
   };
+  createdBy?: TransactionUser | null;
   vendorAccount?: {
     id: string;
     accountName: string;
@@ -167,7 +174,8 @@ export async function createPurchaseNote(
 export async function getPurchaseNotes(
   scope: Scope,
   params: {
-    departmentId: string;
+    departmentId?: string;
+    companyId?: string;
     search?: string;
     docType?: string;
   },
@@ -182,7 +190,8 @@ export async function getPurchaseNote(
   scope: Scope,
   id: string,
   params: {
-    departmentId: string;
+    departmentId?: string;
+    companyId?: string;
     docType?: string;
   },
 ) {

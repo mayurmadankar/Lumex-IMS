@@ -93,7 +93,8 @@ export type InventoryItemListItem = {
 export async function getInventoryItems(
   scope: Scope,
   params: {
-    departmentId: string;
+    departmentId?: string;
+    companyId?: string;
     search?: string;
   },
 ) {
@@ -107,7 +108,8 @@ export async function getInventoryItemByLot(
   scope: Scope,
   lotId: number | string,
   params: {
-    departmentId: string;
+    departmentId?: string;
+    companyId?: string;
   },
 ) {
   const response = await axiosInstance.get(

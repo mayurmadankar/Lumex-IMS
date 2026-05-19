@@ -1,6 +1,6 @@
 "use client";
 
-import { FilePlus2, Loader2, RotateCcw, Search } from "lucide-react";
+import { ArrowRightLeft, FilePlus2, Loader2, RotateCcw, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
@@ -14,6 +14,8 @@ import type { AccountListItem } from "@/api/services/account.service";
 import type { InventoryItemListItem } from "@/api/services/inventory.service";
 import { createInvoiceFromInventory } from "@/api/services/invoice.service";
 import type { InvoiceStatus, InvoiceType } from "@/api/services/invoice.service";
+import type { TransferListItem } from "@/api/services/transfer.service";
+import TransferForm from "@/components/transfer/TransferForm";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/input";
@@ -181,6 +183,10 @@ export default function InventoryListPage() {
   const [invoiceStatus, setInvoiceStatus] = useState<InvoiceStatus>("ACTIVE");
   const [invoiceRemark, setInvoiceRemark] = useState("");
   const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [transferItem, setTransferItem] = useState<InventoryItemListItem | null>(
+    null,
+  );
 
   const departmentAccesses = useMemo(
     () => user?.departmentAccesses ?? [],
@@ -214,6 +220,16 @@ export default function InventoryListPage() {
         : null)
     );
   }, [accessibleCompanies, selectedAccess, selectedCompanyId]);
+  const accessByDepartmentId = useMemo(
+    () =>
+      new Map(
+        departmentAccesses.map((access) => [
+          access.departmentId,
+          permissionsToMap(access.permissions),
+        ]),
+      ),
+    [departmentAccesses],
+  );
   const internalDepartmentOptions = useMemo(
     () =>
       departmentAccesses.filter(
@@ -230,19 +246,66 @@ export default function InventoryListPage() {
   const permissionMap = selectedAccess
     ? permissionsToMap(selectedAccess.permissions)
     : persistedPermissions;
-  const canReadInventory = permissionAllows(
-    permissionMap.INVENTORY_LIST,
-    "READ_ONLY",
+  const companyDepartmentAccesses = useMemo(
+    () =>
+      departmentAccesses.filter(
+        (access) => access.companyId === currentCompany?.id,
+      ),
+    [currentCompany?.id, departmentAccesses],
   );
-  const canReturnInventory = permissionAllows(
-    permissionMap.NEW_PURCH_NOTE_RTN,
-    "READ_WRITE",
+  const canReadInventory = currentCompany
+    ? companyDepartmentAccesses.some((access) =>
+        permissionAllows(
+          permissionsToMap(access.permissions).INVENTORY_LIST,
+          "READ_ONLY",
+        ),
+      )
+    : permissionAllows(permissionMap.INVENTORY_LIST, "READ_ONLY");
+  const hasAnyReturnInventory = companyDepartmentAccesses.some((access) =>
+    permissionAllows(
+      permissionsToMap(access.permissions).NEW_PURCH_NOTE_RTN,
+      "READ_WRITE",
+    ),
   );
-  const canCreateInvoice = permissionAllows(
-    permissionMap.NEW_INVOICE,
-    "READ_WRITE",
+  const hasAnyCreateInvoice = companyDepartmentAccesses.some((access) =>
+    permissionAllows(
+      permissionsToMap(access.permissions).NEW_INVOICE,
+      "READ_WRITE",
+    ),
   );
-  const canSelectInventory = canReturnInventory || canCreateInvoice;
+  const hasAnyTransfer = companyDepartmentAccesses.some((access) =>
+    permissionAllows(
+      permissionsToMap(access.permissions).NEW_TRANSFER,
+      "READ_WRITE",
+    ),
+  );
+  const canReturnInventoryForDepartment = (departmentId?: string | null) =>
+    permissionAllows(
+      departmentId
+        ? accessByDepartmentId.get(departmentId)?.NEW_PURCH_NOTE_RTN
+        : undefined,
+      "READ_WRITE",
+    );
+  const canCreateInvoiceForDepartment = (departmentId?: string | null) =>
+    permissionAllows(
+      departmentId
+        ? accessByDepartmentId.get(departmentId)?.NEW_INVOICE
+        : undefined,
+      "READ_WRITE",
+    );
+  const canTransferForDepartment = (departmentId?: string | null) =>
+    permissionAllows(
+      departmentId
+        ? accessByDepartmentId.get(departmentId)?.NEW_TRANSFER
+        : undefined,
+      "READ_WRITE",
+    );
+  const canSelectItem = (item: InventoryItemListItem) =>
+    canReturnInventoryForDepartment(item.department?.id) ||
+    canCreateInvoiceForDepartment(item.department?.id) ||
+    canTransferForDepartment(item.department?.id);
+  const canSelectInventory =
+    hasAnyReturnInventory || hasAnyCreateInvoice || hasAnyTransfer;
   const isInternalInvoice = invoiceType === "INTERNAL_INVOICE";
   const selectedInvoiceCustomer = customerAccounts.find(
     (account) => account.id === invoiceAccountId,
@@ -252,7 +315,7 @@ export default function InventoryListPage() {
   );
 
   useEffect(() => {
-    if (!canReadInventory || !selectedDepartmentId) {
+    if (!canReadInventory || !currentCompany?.id) {
       setLoading(false);
       return;
     }
@@ -262,7 +325,7 @@ export default function InventoryListPage() {
         setLoading(true);
         setError(null);
         const response = await getInventoryItems("user", {
-          departmentId: selectedDepartmentId,
+          companyId: currentCompany?.id,
         });
         setInventoryItems(response.data.inventoryItems ?? []);
       } catch {
@@ -273,7 +336,7 @@ export default function InventoryListPage() {
     };
 
     loadInventoryItems();
-  }, [canReadInventory, selectedDepartmentId]);
+  }, [canReadInventory, currentCompany?.id]);
 
   useEffect(() => {
     const availableIds = new Set(inventoryItems.map((item) => item.id));
@@ -282,14 +345,20 @@ export default function InventoryListPage() {
 
   useEffect(() => {
     const loadCustomerAccounts = async () => {
-      if (!canCreateInvoice || !selectedDepartmentId) {
+      const invoiceDepartmentId = invoiceItem?.department?.id;
+
+      if (
+        !invoiceModalOpen ||
+        !invoiceDepartmentId ||
+        !canCreateInvoiceForDepartment(invoiceDepartmentId)
+      ) {
         setCustomerAccounts([]);
         return;
       }
 
       try {
         const response = await getAccounts("user", {
-          departmentId: selectedDepartmentId,
+          departmentId: invoiceDepartmentId,
           status: "ACTIVE",
         });
         setCustomerAccounts(
@@ -301,7 +370,7 @@ export default function InventoryListPage() {
     };
 
     loadCustomerAccounts();
-  }, [canCreateInvoice, selectedDepartmentId]);
+  }, [accessByDepartmentId, invoiceItem, invoiceModalOpen]);
 
   const filteredInventoryItems = useMemo(() => {
     const value = search.trim().toLowerCase();
@@ -325,6 +394,7 @@ export default function InventoryListPage() {
         item.labAccountName,
         item.certificateNo,
         item.locationAccountName,
+        item.department?.name,
         item.company?.name,
         item.company?.code,
         item.status,
@@ -387,9 +457,40 @@ export default function InventoryListPage() {
   const hasVendorIssue =
     selectedInventoryItems.length > 0 &&
     (selectedVendorIds.size !== 1 || selectedVendorIds.has("__MISSING__"));
+  const selectedDepartmentIds = useMemo(
+    () =>
+      new Set(
+        selectedInventoryItems.map(
+          (item) => item.department?.id ?? "__MISSING__",
+        ),
+      ),
+    [selectedInventoryItems],
+  );
+  const selectedSourceDepartmentId =
+    selectedDepartmentIds.size === 1
+      ? [...selectedDepartmentIds][0]
+      : null;
+  const hasDepartmentIssue =
+    selectedInventoryItems.length > 0 &&
+    (selectedDepartmentIds.size !== 1 ||
+      selectedDepartmentIds.has("__MISSING__"));
+  const selectedCanReturn =
+    Boolean(selectedSourceDepartmentId) &&
+    !hasDepartmentIssue &&
+    canReturnInventoryForDepartment(selectedSourceDepartmentId);
+  const selectedCanCreateInvoice =
+    selectedInventoryItems.length === 1 &&
+    canCreateInvoiceForDepartment(selectedInventoryItems[0]?.department?.id);
+  const selectedCanTransfer =
+    selectedInventoryItems.length === 1 &&
+    canTransferForDepartment(selectedInventoryItems[0]?.department?.id);
+  const selectablePaginatedItems = useMemo(
+    () => paginatedInventoryItems.filter(canSelectItem),
+    [accessByDepartmentId, paginatedInventoryItems],
+  );
   const allFilteredSelected =
-    paginatedInventoryItems.length > 0 &&
-    paginatedInventoryItems.every((item) => selectedItemIds.includes(item.id));
+    selectablePaginatedItems.length > 0 &&
+    selectablePaginatedItems.every((item) => selectedItemIds.includes(item.id));
 
   const toggleItemSelection = (itemId: string, checked: boolean) => {
     setSelectedItemIds((ids) =>
@@ -402,7 +503,7 @@ export default function InventoryListPage() {
   };
 
   const toggleFilteredSelection = (checked: boolean) => {
-    const visibleIds = paginatedInventoryItems.map((item) => item.id);
+    const visibleIds = selectablePaginatedItems.map((item) => item.id);
     setSelectedItemIds((ids) => {
       if (!checked) return ids.filter((id) => !visibleIds.includes(id));
       return [...new Set([...ids, ...visibleIds])];
@@ -415,6 +516,11 @@ export default function InventoryListPage() {
       return;
     }
 
+    if (hasDepartmentIssue || !selectedCanReturn) {
+      toast.error("Select returnable stock from one department.");
+      return;
+    }
+
     setReturnModalOpen(true);
   };
 
@@ -424,7 +530,7 @@ export default function InventoryListPage() {
   };
 
   const handleReturnSelected = async () => {
-    if (!selectedDepartmentId) {
+    if (!selectedSourceDepartmentId || hasDepartmentIssue) {
       toast.error("Select a department before returning stock items.");
       return;
     }
@@ -442,7 +548,7 @@ export default function InventoryListPage() {
     try {
       setIsReturning(true);
       const response = await returnInventoryItems("user", {
-        departmentId: selectedDepartmentId,
+        departmentId: selectedSourceDepartmentId,
         itemIds: selectedItemIds,
         docDate: returnDocDate,
         referenceDocNo: returnReferenceDocNo,
@@ -472,6 +578,11 @@ export default function InventoryListPage() {
   };
 
   const openInvoiceModal = (item: InventoryItemListItem) => {
+    if (!canCreateInvoiceForDepartment(item.department?.id)) {
+      toast.error("You do not have invoice write access for this item department.");
+      return;
+    }
+
     setInvoiceItem(item);
     setInvoiceReferenceDocNo("");
     setInvoiceType("LOCAL_INVOICE");
@@ -501,6 +612,11 @@ export default function InventoryListPage() {
       return;
     }
 
+    if (!selectedCanCreateInvoice) {
+      toast.error("You do not have invoice write access for this item department.");
+      return;
+    }
+
     openInvoiceModal(item);
   };
 
@@ -509,8 +625,58 @@ export default function InventoryListPage() {
     setInvoiceModalOpen(false);
   };
 
+  const openTransferModal = (item: InventoryItemListItem) => {
+    if (!canTransferForDepartment(item.department?.id)) {
+      toast.error("You do not have transfer write access for this item department.");
+      return;
+    }
+
+    setTransferItem(item);
+    setTransferModalOpen(true);
+  };
+
+  const openSelectedTransferModal = () => {
+    if (selectedInventoryItems.length !== 1) {
+      toast.error("Select exactly one inventory item to transfer.");
+      return;
+    }
+
+    const [item] = selectedInventoryItems;
+    if (item.status !== "STOCK") {
+      toast.error("Only stock items can be transferred.");
+      return;
+    }
+
+    if (!selectedCanTransfer) {
+      toast.error("You do not have transfer write access for this item department.");
+      return;
+    }
+
+    openTransferModal(item);
+  };
+
+  const closeTransferModal = () => {
+    setTransferModalOpen(false);
+    setTransferItem(null);
+  };
+
+  const handleTransferCreated = (transfer: TransferListItem) => {
+    const movedItem = transfer.inventoryItem;
+
+    if (movedItem) {
+      setInventoryItems((items) =>
+        items.map((item) => (item.id === movedItem.id ? movedItem : item)),
+      );
+      setSelectedItemIds((ids) => ids.filter((id) => id !== movedItem.id));
+    }
+
+    closeTransferModal();
+  };
+
   const handleCreateInvoiceFromInventory = async () => {
-    if (!selectedDepartmentId) {
+    const invoiceDepartmentId = invoiceItem?.department?.id;
+
+    if (!invoiceDepartmentId) {
       toast.error("Select a department before creating an invoice.");
       return;
     }
@@ -538,7 +704,7 @@ export default function InventoryListPage() {
     try {
       setIsCreatingInvoice(true);
       const response = await createInvoiceFromInventory("user", {
-        departmentId: selectedDepartmentId,
+        departmentId: invoiceDepartmentId,
         inventoryItemId: invoiceItem.id,
         accountId: !isInternalInvoice ? selectedInvoiceCustomer?.id : undefined,
         sourceCompanyId: isInternalInvoice
@@ -579,7 +745,7 @@ export default function InventoryListPage() {
     return (
       <div className="p-6">
         <div className="rounded-2xl border border-dashed bg-background px-6 py-12 text-center text-sm text-muted-foreground">
-          You do not have permission to view inventory in this department.
+          You do not have permission to view inventory in this company.
         </div>
       </div>
     );
@@ -602,10 +768,10 @@ export default function InventoryListPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {canCreateInvoice && (
+            {hasAnyCreateInvoice && (
               <Button
                 className="h-9 rounded-xl"
-                disabled={selectedInventoryItems.length !== 1}
+                disabled={!selectedCanCreateInvoice}
                 onClick={openSelectedInvoiceModal}
               >
                 <FilePlus2 className="h-4 w-4" />
@@ -613,11 +779,27 @@ export default function InventoryListPage() {
               </Button>
             )}
 
-            {canReturnInventory && (
+            {hasAnyTransfer && (
               <Button
                 variant="outline"
                 className="h-9 rounded-xl"
-                disabled={selectedInventoryItems.length === 0}
+                disabled={!selectedCanTransfer}
+                onClick={openSelectedTransferModal}
+              >
+                <ArrowRightLeft className="h-4 w-4" />
+                Transfer
+              </Button>
+            )}
+
+            {hasAnyReturnInventory && (
+              <Button
+                variant="outline"
+                className="h-9 rounded-xl"
+                disabled={
+                  selectedInventoryItems.length === 0 ||
+                  !selectedCanReturn ||
+                  hasDepartmentIssue
+                }
                 onClick={openReturnModal}
               >
                 <RotateCcw className="h-4 w-4" />
@@ -653,7 +835,7 @@ export default function InventoryListPage() {
         ) : (
           <div className="overflow-hidden rounded-2xl border bg-background">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[2340px] text-sm">
+              <table className="w-full min-w-[2400px] text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
                     {canSelectInventory && (
@@ -680,6 +862,7 @@ export default function InventoryListPage() {
                     <th className="px-3 py-3 font-medium">Lab</th>
                     <th className="px-3 py-3 font-medium">Certificate No</th>
                     <th className="px-3 py-3 font-medium">Parcel / Stone</th>
+                    <th className="px-3 py-3 font-medium">Department</th>
                     <th className="px-3 py-3 font-medium">Location Account</th>
                     <th className="px-3 py-3 font-medium">Company</th>
                     <th className="px-3 py-3 font-medium">Vendor</th>
@@ -701,6 +884,7 @@ export default function InventoryListPage() {
                             type="checkbox"
                             aria-label={`Select lot ${item.lotId}`}
                             checked={selectedItemIds.includes(item.id)}
+                            disabled={!canSelectItem(item)}
                             onChange={(event) =>
                               toggleItemSelection(item.id, event.target.checked)
                             }
@@ -745,6 +929,7 @@ export default function InventoryListPage() {
                       <td className="px-3 py-3">
                         {item.parcelOrStone === "PARCEL" ? "Parcel" : "Stone"}
                       </td>
+                      <td className="px-3 py-3">{item.department?.name ?? "-"}</td>
                       <td className="px-3 py-3">{item.locationAccountName}</td>
                       <td className="px-3 py-3">{companyLabel(item.company)}</td>
                       <td className="px-3 py-3">
@@ -858,6 +1043,12 @@ export default function InventoryListPage() {
               Select stock items from one vendor only before creating a return.
             </div>
           )}
+
+          {hasDepartmentIssue && (
+            <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              Select stock items from one department only before creating a return.
+            </div>
+          )}
         </ModalBody>
         <ModalFooter>
           <Button
@@ -874,7 +1065,11 @@ export default function InventoryListPage() {
             className="h-9 rounded-xl"
             onClick={handleReturnSelected}
             disabled={
-              isReturning || hasVendorIssue || selectedInventoryItems.length === 0
+              isReturning ||
+              hasVendorIssue ||
+              hasDepartmentIssue ||
+              !selectedCanReturn ||
+              selectedInventoryItems.length === 0
             }
           >
             {isReturning ? (
@@ -1105,6 +1300,25 @@ export default function InventoryListPage() {
             Save and Close
           </Button>
         </ModalFooter>
+      </Modal>
+
+      <Modal
+        open={transferModalOpen}
+        onClose={closeTransferModal}
+        title="Transfer Inventory"
+        subtitle={transferItem ? itemLabel(transferItem) : undefined}
+        icon={<ArrowRightLeft className="h-4 w-4" />}
+        maxWidth="xl"
+      >
+        <ModalBody className="max-h-[75vh] overflow-y-auto">
+          <TransferForm
+            companyId={currentCompany?.id ?? null}
+            initialItem={transferItem}
+            onCancel={closeTransferModal}
+            onTransferred={handleTransferCreated}
+            submitLabel="Save Transfer"
+          />
+        </ModalBody>
       </Modal>
     </div>
   );

@@ -8,9 +8,8 @@ import { getMemo } from "@/api/services/memo.service";
 import type { MemoInventoryItem, MemoListItem } from "@/api/services/memo.service";
 import { Button } from "@/components/ui/button";
 import Pagination from "@/components/ui/pagination";
-import { permissionAllows, permissionsToMap } from "@/config/modules";
+import { useCompanyAccess } from "@/hooks/use-company-access";
 import { usePagination } from "@/hooks/use-pagination";
-import { useAppSelector } from "@/store/hooks";
 
 function formatDate(value?: string | null, withTime = false) {
   if (!value) return "-";
@@ -80,36 +79,20 @@ export default function MemoDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const user = useAppSelector((state) => state.auth.user);
-  const persistedPermissions = useAppSelector(
-    (state) => state.permission.permissions,
-  );
+  const { currentCompany, hasCompanyPermission } = useCompanyAccess();
   const [memo, setMemo] = useState<MemoListItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const departmentAccesses = useMemo(
-    () => user?.departmentAccesses ?? [],
-    [user?.departmentAccesses],
-  );
-  const selectedDepartmentId =
-    user?.selectedDepartmentId ?? departmentAccesses[0]?.departmentId ?? null;
-  const selectedAccess =
-    departmentAccesses.find(
-      (access) => access.departmentId === selectedDepartmentId,
-    ) ?? departmentAccesses[0];
-  const permissionMap = selectedAccess
-    ? permissionsToMap(selectedAccess.permissions)
-    : persistedPermissions;
   const docTypeFilter = searchParams.get("docType") ?? undefined;
   const isMemoReturnDetail = docTypeFilter === "Memo Return";
   const canReadMemos =
-    permissionAllows(permissionMap.MEMO_IN_LIST, "READ_ONLY") ||
+    hasCompanyPermission("MEMO_IN_LIST", "READ_ONLY") ||
     (isMemoReturnDetail &&
-      permissionAllows(permissionMap.MEMO_IN_RETURN, "READ_WRITE"));
+      hasCompanyPermission("MEMO_IN_RETURN", "READ_WRITE"));
 
   useEffect(() => {
-    if (!canReadMemos || !selectedDepartmentId || !id) {
+    if (!canReadMemos || !currentCompany?.id || !id) {
       setLoading(false);
       return;
     }
@@ -119,7 +102,7 @@ export default function MemoDetailPage() {
         setLoading(true);
         setError(null);
         const response = await getMemo("user", id, {
-          departmentId: selectedDepartmentId,
+          companyId: currentCompany.id,
           docType: docTypeFilter,
         });
         setMemo(response.data.memo);
@@ -131,7 +114,7 @@ export default function MemoDetailPage() {
     };
 
     loadMemo();
-  }, [canReadMemos, docTypeFilter, id, selectedDepartmentId]);
+  }, [canReadMemos, currentCompany?.id, docTypeFilter, id]);
   const items = useMemo(() => memo?.items ?? [], [memo?.items]);
   const {
     paginatedItems: paginatedLineItems,
@@ -142,7 +125,7 @@ export default function MemoDetailPage() {
     return (
       <div className="p-6">
         <div className="rounded-2xl border border-dashed bg-background px-6 py-12 text-center text-sm text-muted-foreground">
-          You do not have permission to view memo documents in this department.
+          You do not have permission to view memo documents in this company.
         </div>
       </div>
     );
@@ -203,6 +186,10 @@ export default function MemoDetailPage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <DetailValue label="Company" value={memo.company.name} />
           <DetailValue label="Department" value={memo.department.name} />
+          <DetailValue
+            label="Performed By"
+            value={memo.createdBy?.fullName ?? memo.createdBy?.email ?? "-"}
+          />
           <DetailValue label="Vendor" value={memo.account.accountName} />
           <DetailValue label="Doc Status" value={<StatusPill status={memo.status} />} />
           <DetailValue label="Open Date" value={formatDate(memo.openDate, true)} />

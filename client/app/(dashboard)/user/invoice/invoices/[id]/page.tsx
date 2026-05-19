@@ -8,9 +8,8 @@ import { getInvoice } from "@/api/services/invoice.service";
 import type { InvoiceItem, InvoiceListItem } from "@/api/services/invoice.service";
 import { Button } from "@/components/ui/button";
 import Pagination from "@/components/ui/pagination";
-import { permissionAllows, permissionsToMap } from "@/config/modules";
+import { useCompanyAccess } from "@/hooks/use-company-access";
 import { usePagination } from "@/hooks/use-pagination";
-import { useAppSelector } from "@/store/hooks";
 
 function formatDate(value?: string | null, withTime = false) {
   if (!value) return "-";
@@ -68,31 +67,15 @@ function recipientDocId(invoice: InvoiceListItem) {
 export default function InvoiceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const user = useAppSelector((state) => state.auth.user);
-  const persistedPermissions = useAppSelector(
-    (state) => state.permission.permissions,
-  );
+  const { currentCompany, hasCompanyPermission } = useCompanyAccess();
   const [invoice, setInvoice] = useState<InvoiceListItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const departmentAccesses = useMemo(
-    () => user?.departmentAccesses ?? [],
-    [user?.departmentAccesses],
-  );
-  const selectedDepartmentId =
-    user?.selectedDepartmentId ?? departmentAccesses[0]?.departmentId ?? null;
-  const selectedAccess =
-    departmentAccesses.find(
-      (access) => access.departmentId === selectedDepartmentId,
-    ) ?? departmentAccesses[0];
-  const permissionMap = selectedAccess
-    ? permissionsToMap(selectedAccess.permissions)
-    : persistedPermissions;
-  const canReadInvoices = permissionAllows(permissionMap.INVOICE_LIST, "READ_ONLY");
+  const canReadInvoices = hasCompanyPermission("INVOICE_LIST", "READ_ONLY");
 
   useEffect(() => {
-    if (!canReadInvoices || !selectedDepartmentId || !id) {
+    if (!canReadInvoices || !currentCompany?.id || !id) {
       setLoading(false);
       return;
     }
@@ -102,7 +85,7 @@ export default function InvoiceDetailPage() {
         setLoading(true);
         setError(null);
         const response = await getInvoice("user", id, {
-          departmentId: selectedDepartmentId,
+          companyId: currentCompany.id,
         });
         setInvoice(response.data.invoice);
       } catch {
@@ -113,7 +96,7 @@ export default function InvoiceDetailPage() {
     };
 
     loadInvoice();
-  }, [canReadInvoices, id, selectedDepartmentId]);
+  }, [canReadInvoices, currentCompany?.id, id]);
   const items = useMemo(() => invoice?.items ?? [], [invoice?.items]);
   const {
     paginatedItems: paginatedLineItems,
@@ -124,7 +107,7 @@ export default function InvoiceDetailPage() {
     return (
       <div className="p-6">
         <div className="rounded-2xl border border-dashed bg-background px-6 py-12 text-center text-sm text-muted-foreground">
-          You do not have permission to view invoices in this department.
+          You do not have permission to view invoices in this company.
         </div>
       </div>
     );
@@ -175,6 +158,12 @@ export default function InvoiceDetailPage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <DetailValue label="Company" value={invoice.company.name} />
           <DetailValue label="Department" value={invoice.department.name} />
+          <DetailValue
+            label="Performed By"
+            value={
+              invoice.createdBy?.fullName ?? invoice.createdBy?.email ?? "-"
+            }
+          />
           <DetailValue label="Account / Company" value={recipientName(invoice)} />
           <DetailValue label="Account Doc ID / Company Code" value={recipientDocId(invoice)} />
           <DetailValue label="Status" value={invoice.status} />

@@ -1,6 +1,13 @@
 import axiosInstance from "@/api/axios";
+import type { InventoryItemListItem } from "@/api/services/inventory.service";
 
 type Scope = "user";
+
+type TransactionUser = {
+  id: string;
+  fullName: string;
+  email: string;
+};
 
 export type InvoiceType =
   | "LOCAL_INVOICE"
@@ -41,6 +48,14 @@ export type CreateInvoiceFromInventoryPayload = {
   currency?: string;
   status?: InvoiceStatus;
   remark?: string;
+};
+
+export type ReturnInvoiceItemPayload = {
+  companyId: string;
+  inventoryItemId: string;
+  referenceDocNo?: string;
+  docDate?: string;
+  notes?: string;
 };
 
 export type InvoiceItem = {
@@ -125,6 +140,7 @@ export type InvoiceListItem = {
     id: string;
     name: string;
   };
+  createdBy?: TransactionUser | null;
   account?: {
     id: string;
     accountName: string;
@@ -152,6 +168,11 @@ export type InvoiceListItem = {
   unitPrice?: number;
 };
 
+export type InvoiceReturnItem = {
+  inventoryItem: InventoryItemListItem;
+  invoice: InvoiceListItem;
+};
+
 export async function createInvoice(scope: Scope, payload: CreateInvoicePayload) {
   const response = await axiosInstance.post(`/api/${scope}/invoices`, payload);
   return response.data;
@@ -171,7 +192,8 @@ export async function createInvoiceFromInventory(
 export async function getInvoices(
   scope: Scope,
   params: {
-    departmentId: string;
+    departmentId?: string;
+    companyId?: string;
     search?: string;
   },
 ) {
@@ -185,11 +207,37 @@ export async function getInvoice(
   scope: Scope,
   id: string,
   params: {
-    departmentId: string;
+    departmentId?: string;
+    companyId?: string;
   },
 ) {
   const response = await axiosInstance.get(`/api/${scope}/invoices/${id}`, {
     params,
   });
+  return response.data;
+}
+
+export async function getInvoiceReturnItemByLot(
+  scope: Scope,
+  lotId: number | string,
+  params: {
+    companyId: string;
+  },
+) {
+  const response = await axiosInstance.get(
+    `/api/${scope}/invoice-return-items/lot/${lotId}`,
+    { params },
+  );
+  return response.data;
+}
+
+export async function returnInvoiceItem(
+  scope: Scope,
+  payload: ReturnInvoiceItemPayload,
+) {
+  const response = await axiosInstance.post(
+    `/api/${scope}/invoices/return`,
+    payload,
+  );
   return response.data;
 }
