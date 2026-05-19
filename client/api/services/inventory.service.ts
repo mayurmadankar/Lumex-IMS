@@ -65,7 +65,7 @@ export type InventoryItemListItem = {
   remark?: string | null;
   departmentAccountName: string;
   locationAccountName: string;
-  status: "STOCK" | "MEMO" | "SOLD" | "RETURNED";
+  status: "STOCK" | "MEMO" | "MEMO_OUT" | "SOLD" | "RETURNED";
   createdAt: string;
   company: {
     id: string;

@@ -6,6 +6,7 @@ import { createAccount, getAccount, getAccounts, updateAccount } from "../contro
 import { createInvoice, createInvoiceFromInventory, getInvoice, getInvoiceReturnItemByLot, getInvoices, returnInvoiceItem } from "../controller/common/invoice.controller.js";
 import { createItem, getItems } from "../controller/common/item.controller.js";
 import { createMemo, deleteMemo, getMemo, getMemoInventoryItemByLot, getMemoInventoryItems, getMemos, purchaseMemoInventoryItems, returnMemoInventoryItems } from "../controller/common/memo.controller.js";
+import { createMemoOut, getMemoOut, getMemoOutAccounts, getMemoOutInventoryItemByLot, getMemoOutReturnItemByLot, getMemoOuts, returnMemoOutItem } from "../controller/common/memoOut.controller.js";
 import { createPurchaseNote, getInventoryItemByLot, getInventoryItems, getPurchaseNote, getPurchaseNotes, returnInventoryItems } from "../controller/common/purchase.controller.js";
 import { createTransfer, createTransferReturn, getCompanyDepartments, getDepartmentUsers, getTransferReturnItemByLot, getTransfers } from "../controller/common/transfer.controller.js";
 import { authorizeDepartmentModule } from "../middleware/auth.middleware.js";
@@ -146,6 +147,15 @@ router.delete(
   authorizeDepartmentModule({ module: "NEW_MEMO_IN", access: "READ_WRITE", departmentIdFrom: "query" }),
   expressErrorHandler(deleteMemo),
 );
+
+// Memo Out
+router.get("/memo-out-accounts", expressErrorHandler(getMemoOutAccounts));
+router.get("/memo-out-inventory-items/lot/:lotId", expressErrorHandler(getMemoOutInventoryItemByLot));
+router.post("/memo-outs", expressErrorHandler(createMemoOut));
+router.get("/memo-out-return-items/lot/:lotId", expressErrorHandler(getMemoOutReturnItemByLot));
+router.post("/memo-outs/return", expressErrorHandler(returnMemoOutItem));
+router.get("/memo-outs", expressErrorHandler(getMemoOuts));
+router.get("/memo-outs/:id", expressErrorHandler(getMemoOut));
 
 // Transfer
 router.get("/transfer-departments", expressErrorHandler(getCompanyDepartments));

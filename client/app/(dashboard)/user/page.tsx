@@ -398,6 +398,21 @@ export default function UserPage() {
       return;
     }
 
+    if (action.key === "MEMO_OUT_LIST") {
+      router.push("/user/memo-out/memos");
+      return;
+    }
+
+    if (action.key === "NEW_MEMO_OUT") {
+      router.push("/user/memo-out/new-memo-out");
+      return;
+    }
+
+    if (action.key === "NEW_MEMO_OUT_RETURN") {
+      router.push("/user/memo-out/new-memo-out-return");
+      return;
+    }
+
     if (action.key === "TRANSFER_LIST") {
       router.push("/user/transfer/transfers");
       return;

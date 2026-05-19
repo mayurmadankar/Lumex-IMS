@@ -13,6 +13,8 @@ seed.js
 prisma/migrations/*
 !prisma/migrations/20260519000100_transfer_management/
 !prisma/migrations/20260519000100_transfer_management/migration.sql
+!prisma/migrations/20260520000100_memo_out_management/
+!prisma/migrations/20260520000100_memo_out_management/migration.sql
 *.db
 *.db-journal
 

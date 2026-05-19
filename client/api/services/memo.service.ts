@@ -148,7 +148,7 @@ export type MemoInventoryItem = {
   parcelOrStone: "PARCEL" | "STONE";
   departmentAccountName?: string | null;
   locationAccountName?: string | null;
-  status: "STOCK" | "MEMO" | "SOLD" | "RETURNED";
+  status: "STOCK" | "MEMO" | "MEMO_OUT" | "SOLD" | "RETURNED";
   createdAt: string;
   shape?: string | null;
   color?: string | null;

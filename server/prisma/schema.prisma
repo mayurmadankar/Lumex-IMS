@@ -26,6 +26,7 @@ model User {
   accountsUpdated       Account[]              @relation("AccountUpdatedBy")
   purchaseNotesCreated  PurchaseNote[]         @relation("PurchaseNoteCreatedBy")
   memosCreated          Memo[]                 @relation("MemoCreatedBy")
+  memoOutsCreated       MemoOut[]              @relation("MemoOutCreatedBy")
   invoicesCreated       Invoice[]              @relation("InvoiceCreatedBy")
   transfersCreated      Transfer[]             @relation("TransferCreatedBy")
   transfersReceived     Transfer[]             @relation("TransferToUser")
@@ -65,6 +66,7 @@ model Company {
   purchaseNotes       PurchaseNote[]     @relation("PurchaseNoteCompany")
   sourcePurchaseNotes PurchaseNote[]     @relation("PurchaseNoteSourceCompany")
   memos               Memo[]
+  memoOuts            MemoOut[]
   invoices            Invoice[]
   sourceInvoices      Invoice[]          @relation("InvoiceSourceCompany")
   transfers           Transfer[]         @relation("TransferCompany")
@@ -140,6 +142,7 @@ model Department {
   originAccounts    Account[]
   purchaseNotes     PurchaseNote[]
   memos             Memo[]
+  memoOuts          MemoOut[]
   invoices          Invoice[]
   outgoingTransfers Transfer[]             @relation("TransferFromDepartment")
   incomingTransfers Transfer[]             @relation("TransferToDepartment")
@@ -247,6 +250,7 @@ model Account {
 
   purchaseNotesAsVendor  PurchaseNote[]  @relation("PurchaseNoteVendorAccount")
   memosAsAccount         Memo[]          @relation("MemoAccount")
+  memoOutsAsAccount      MemoOut[]       @relation("MemoOutAccount")
   invoicesAsAccount      Invoice[]       @relation("InvoiceAccount")
   inventoryItemsAsVendor InventoryItem[] @relation("InventoryItemVendorAccount")
 
@@ -362,6 +366,7 @@ model InventoryItem {
   invoiceItems       InvoiceItem[]
   inventoryMovements InventoryMovement[]
   transfers          Transfer[]          @relation("TransferInventoryItem")
+  memoOutDocuments   MemoOut[]           @relation("MemoOutInventoryItem")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -485,6 +490,59 @@ model Memo {
   @@unique([companyId, docId])
   @@index([departmentId, createdAt(sort: Desc)])
   @@index([accountId])
+  @@index([createdById])
+}
+
+model MemoOut {
+  id      String @id @default(uuid())
+  docId   Int
+  memoNo  String
+  docType String @default("Memo Out")
+
+  openDate       DateTime @default(now())
+  docDate        DateTime @default(now())
+  referenceDocNo String?
+  itemType       String?
+
+  docQty              Int
+  docWeight           Decimal    @db.Decimal(18, 4)
+  docGrandTotalPrice  Decimal    @db.Decimal(18, 2)
+  mainGrandTotalPrice Decimal    @db.Decimal(18, 2)
+  balanceAmount       Decimal    @db.Decimal(18, 2)
+  paymentTerm         Int?
+  currency            String     @default("USD")
+  docRateToMain       Decimal    @default(1) @db.Decimal(18, 8)
+  docRateToSec        Decimal    @default(1) @db.Decimal(18, 8)
+  status              MemoStatus @default(ACTIVE)
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+  accountId String
+  account   Account @relation("MemoOutAccount", fields: [accountId], references: [id])
+
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation("MemoOutInventoryItem", fields: [inventoryItemId], references: [id], onDelete: Restrict)
+
+  sourceMemoOutId String?
+  sourceMemoOut   MemoOut?  @relation("MemoOutReturnSource", fields: [sourceMemoOutId], references: [id], onDelete: SetNull)
+  returnDocuments MemoOut[] @relation("MemoOutReturnSource")
+
+  createdById String
+  createdBy   User   @relation("MemoOutCreatedBy", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, memoNo])
+  @@unique([companyId, docId])
+  @@index([departmentId, createdAt(sort: Desc)])
+  @@index([accountId])
+  @@index([inventoryItemId])
+  @@index([sourceMemoOutId])
   @@index([createdById])
 }
 
@@ -651,6 +709,7 @@ enum ParcelOrStone {
 enum LotStatus {
   STOCK
   MEMO
+  MEMO_OUT
   SOLD
   RETURNED
 }
@@ -660,6 +719,8 @@ enum InventoryMovementType {
   MEMO_IN
   MEMO_PURCHASED
   MEMO_RETURN
+  MEMO_OUT
+  MEMO_OUT_RETURN
   PURCHASE_RETURN
   INVOICE_OUT
   INVOICE_RETURN
@@ -669,6 +730,7 @@ enum InventoryMovementType {
 enum InventoryMovementDocumentType {
   PURCHASE_NOTE
   MEMO
+  MEMO_OUT
   INVOICE
   TRANSFER
 }
@@ -721,6 +783,7 @@ enum AuditEntityType {
   ACCOUNT
   PURCHASE_NOTE
   MEMO
+  MEMO_OUT
   INVENTORY_ITEM
   INVOICE
   TRANSFER

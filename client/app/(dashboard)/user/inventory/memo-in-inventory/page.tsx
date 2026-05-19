@@ -55,6 +55,7 @@ function StatusText({ status }: { status: MemoInventoryItem["status"] }) {
   const styles: Record<MemoInventoryItem["status"], string> = {
     STOCK: "text-emerald-600",
     MEMO: "text-rose-600",
+    MEMO_OUT: "text-orange-600",
     SOLD: "text-blue-600",
     RETURNED: "text-slate-600",
   };

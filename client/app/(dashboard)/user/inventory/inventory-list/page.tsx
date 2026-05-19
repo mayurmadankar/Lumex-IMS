@@ -52,6 +52,7 @@ function StatusText({ status }: { status: InventoryItemListItem["status"] }) {
   const styles: Record<InventoryItemListItem["status"], string> = {
     STOCK: "text-emerald-600",
     MEMO: "text-rose-600",
+    MEMO_OUT: "text-orange-600",
     SOLD: "text-blue-600",
     RETURNED: "text-slate-600",
   };

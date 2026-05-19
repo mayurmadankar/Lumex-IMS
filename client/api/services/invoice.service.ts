@@ -87,7 +87,7 @@ export type InvoiceItem = {
     itemId: string;
     lotId: number;
     lotName: string;
-    status: "STOCK" | "MEMO" | "SOLD" | "RETURNED";
+    status: "STOCK" | "MEMO" | "MEMO_OUT" | "SOLD" | "RETURNED";
     purchaseNote?: {
       id: string;
       docId: number;

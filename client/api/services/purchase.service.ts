@@ -4,7 +4,7 @@ type Scope = "user";
 type PurchaseFrom = "LOCAL_PURCHASE" | "IMPORT_PURCHASE" | "INTERNAL_PURCHASE";
 type ParcelOrStone = "PARCEL" | "STONE";
 type DocumentStatus = "ACTIVE" | "CANCELLED";
-type LotStatus = "STOCK" | "MEMO" | "SOLD" | "RETURNED";
+type LotStatus = "STOCK" | "MEMO" | "MEMO_OUT" | "SOLD" | "RETURNED";
 
 type TransactionUser = {
   id: string;
