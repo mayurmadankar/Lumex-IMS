@@ -1,16 +1,21 @@
 "use client";
 
-import { Eye, FileMinus, FilePlus, Loader2, Search } from "lucide-react";
+import { Eye, FileMinus, FilePlus, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { getInvoices } from "@/api/services/invoice.service";
-import type { InvoiceListItem, InvoiceStatus, InvoiceType } from "@/api/services/invoice.service";
+import type {
+  InvoiceListItem,
+  InvoiceStatus,
+  InvoiceType,
+} from "@/api/services/invoice.service";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import Pagination from "@/components/ui/pagination";
+import { TableSearchBar } from "@/components/ui/table-search-bar";
 import { useCompanyAccess } from "@/hooks/use-company-access";
 import { usePagination } from "@/hooks/use-pagination";
+import { matchesTableSearch } from "@/lib/table-search";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-IN", {
@@ -43,7 +48,9 @@ function InvoiceTypePill({ type }: { type: InvoiceType }) {
   };
 
   return (
-    <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${styles[type]}`}>
+    <span
+      className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${styles[type]}`}
+    >
       {labels[type]}
     </span>
   );
@@ -58,7 +65,9 @@ function StatusPill({ status }: { status: InvoiceStatus }) {
   };
 
   return (
-    <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${styles[status]}`}>
+    <span
+      className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${styles[status]}`}
+    >
       {status}
     </span>
   );
@@ -120,43 +129,42 @@ export default function InvoiceListPage() {
   }, [canReadInvoices, currentCompany?.id]);
 
   const filteredInvoices = useMemo(() => {
-    const value = search.trim().toLowerCase();
+    const value = search.trim();
     if (!value) return invoices;
 
     return invoices.filter((invoice) =>
-      [
-        invoice.company.name,
-        invoice.company.code,
-        invoice.department.name,
-        invoice.createdBy?.fullName,
-        invoice.createdBy?.email,
-        invoice.invoiceNo,
-        invoice.docType,
-        invoice.docId,
-        invoice.sourceDocId,
-        invoice.sourceDocNo,
-        invoice.lotId,
-        invoice.referenceDocNo,
-        invoice.notes,
-        invoice.invoiceType,
-        invoice.invoiceTypeLabel,
-        invoice.account?.accountName,
-        invoice.account?.accountIndex,
-        invoice.sourceCompany?.name,
-        invoice.sourceCompany?.code,
-        invoice.itemName,
-        invoice.itemDescription,
-        invoice.status,
-        invoice.currency,
-      ]
-        .filter(Boolean)
-        .some((item) => String(item).toLowerCase().includes(value)),
+      matchesTableSearch(
+        [
+          invoice.company.name,
+          invoice.company.code,
+          invoice.department.name,
+          invoice.createdBy?.fullName,
+          invoice.createdBy?.email,
+          invoice.invoiceNo,
+          invoice.docType,
+          invoice.docId,
+          invoice.sourceDocId,
+          invoice.sourceDocNo,
+          invoice.lotId,
+          invoice.referenceDocNo,
+          invoice.notes,
+          invoice.invoiceType,
+          invoice.invoiceTypeLabel,
+          invoice.account?.accountName,
+          invoice.account?.accountIndex,
+          invoice.sourceCompany?.name,
+          invoice.sourceCompany?.code,
+          invoice.itemName,
+          invoice.itemDescription,
+          invoice.status,
+          invoice.currency,
+        ],
+        value,
+      ),
     );
   }, [invoices, search]);
-  const {
-    paginatedItems: paginatedInvoices,
-    ...invoicePagination
-  } = usePagination(filteredInvoices);
+  const { paginatedItems: paginatedInvoices, ...invoicePagination } =
+    usePagination(filteredInvoices);
 
   if (!canReadInvoices) {
     return (
@@ -170,13 +178,15 @@ export default function InvoiceListPage() {
 
   return (
     <div className="min-h-screen bg-muted/30 p-6">
-      <div className="mx-auto max-w-[1500px] space-y-5">
+      <div className="mx-auto w-full max-w-none space-y-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
               Invoice
             </p>
-            <h1 className="text-2xl font-semibold tracking-tight">Invoice List</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Invoice List
+            </h1>
             <p className="text-sm text-muted-foreground">
               {filteredInvoices.length} invoice records found
             </p>
@@ -206,15 +216,11 @@ export default function InvoiceListPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 rounded-2xl border bg-background px-3 py-2">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search invoices"
-            className="h-9 border-0 px-0 shadow-none focus-visible:ring-0"
-          />
-        </div>
+        <TableSearchBar
+          search={search}
+          onSearch={setSearch}
+          placeholder="Search invoices"
+        />
 
         {loading ? (
           <div className="flex h-48 items-center justify-center rounded-2xl border bg-background text-sm text-muted-foreground">
@@ -248,8 +254,12 @@ export default function InvoiceListPage() {
                     <th className="px-3 py-3 font-medium">Item Name</th>
                     <th className="px-3 py-3 font-medium">Description</th>
                     <th className="px-3 py-3 text-right font-medium">Qty</th>
-                    <th className="px-3 py-3 text-right font-medium">Unit Price</th>
-                    <th className="px-3 py-3 text-right font-medium">Total Amount</th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      Unit Price
+                    </th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      Total Amount
+                    </th>
                     <th className="px-3 py-3 font-medium">Invoice Type</th>
                     <th className="px-3 py-3 font-medium">Reference Doc No</th>
                     <th className="px-3 py-3 font-medium">Remark</th>
@@ -273,7 +283,9 @@ export default function InvoiceListPage() {
                         <button
                           type="button"
                           className="font-medium text-blue-600 hover:underline"
-                          onClick={() => router.push(`/user/invoice/invoices/${invoice.id}`)}
+                          onClick={() =>
+                            router.push(`/user/invoice/invoices/${invoice.id}`)
+                          }
                         >
                           {invoice.invoiceNo}
                         </button>
@@ -292,8 +304,12 @@ export default function InvoiceListPage() {
                         {sourceDocId(invoice)}
                       </td>
                       <td className="px-3 py-3">{invoice.itemName ?? "-"}</td>
-                      <td className="px-3 py-3">{invoice.itemDescription ?? "-"}</td>
-                      <td className="px-3 py-3 text-right">{invoice.quantity ?? invoice.docQty}</td>
+                      <td className="px-3 py-3">
+                        {invoice.itemDescription ?? "-"}
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        {invoice.quantity ?? invoice.docQty}
+                      </td>
                       <td className="px-3 py-3 text-right font-semibold">
                         {formatNumber(invoice.unitPrice ?? 0)}
                       </td>
@@ -305,7 +321,9 @@ export default function InvoiceListPage() {
                       </td>
                       <td className="px-3 py-3">{invoice.referenceDocNo}</td>
                       <td className="px-3 py-3">{invoice.notes ?? "-"}</td>
-                      <td className="px-3 py-3">{formatDate(invoice.createdAt)}</td>
+                      <td className="px-3 py-3">
+                        {formatDate(invoice.createdAt)}
+                      </td>
                       <td className="px-3 py-3">
                         <StatusPill status={invoice.status} />
                       </td>
@@ -314,7 +332,9 @@ export default function InvoiceListPage() {
                           type="button"
                           variant="outline"
                           className="h-8 rounded-xl"
-                          onClick={() => router.push(`/user/invoice/invoices/${invoice.id}`)}
+                          onClick={() =>
+                            router.push(`/user/invoice/invoices/${invoice.id}`)
+                          }
                         >
                           <Eye className="h-3.5 w-3.5" />
                           View

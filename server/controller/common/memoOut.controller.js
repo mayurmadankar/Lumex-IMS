@@ -77,6 +77,13 @@ const buildPrefix = (company) =>
 const buildMemoOutNo = (company, number) =>
   `${buildPrefix(company)}-MO-${String(number).padStart(6, "0")}`;
 
+const memoOutStockOriginWhere = {
+  OR: [
+    { purchaseNoteId: { not: null } },
+    { returnedFromProductionId: { not: null } },
+  ],
+};
+
 const memoOutAccessChecks = [
   { module: "MEMO_OUT_LIST", access: "READ_ONLY" },
   { module: "NEW_MEMO_OUT", access: "READ_WRITE" },
@@ -467,7 +474,7 @@ export const getMemoOutInventoryItemByLot = async (req, res) => {
       departmentId: { in: departmentIds },
       lotId,
       status: "STOCK",
-      purchaseNoteId: { not: null },
+      ...memoOutStockOriginWhere,
     },
     include: inventoryItemInclude,
   });
@@ -512,7 +519,7 @@ export const createMemoOut = async (req, res) => {
       id: data.inventoryItemId,
       companyId: data.companyId,
       status: "STOCK",
-      purchaseNoteId: { not: null },
+      ...memoOutStockOriginWhere,
     },
     include: inventoryItemInclude,
   });
@@ -572,7 +579,7 @@ export const createMemoOut = async (req, res) => {
           id: inventoryItem.id,
           companyId: data.companyId,
           status: "STOCK",
-          purchaseNoteId: { not: null },
+          ...memoOutStockOriginWhere,
         },
         data: {
           status: "MEMO_OUT",

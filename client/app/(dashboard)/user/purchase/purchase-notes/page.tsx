@@ -1,16 +1,17 @@
 "use client";
 
-import { FilePlus, Loader2, Search } from "lucide-react";
+import { FilePlus, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { getPurchaseNotes } from "@/api/services/purchase.service";
 import type { PurchaseNoteListItem } from "@/api/services/purchase.service";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import Pagination from "@/components/ui/pagination";
+import { TableSearchBar } from "@/components/ui/table-search-bar";
 import { useCompanyAccess } from "@/hooks/use-company-access";
 import { usePagination } from "@/hooks/use-pagination";
+import { matchesTableSearch } from "@/lib/table-search";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-IN", {
@@ -60,7 +61,9 @@ function StatusPill({ status }: { status: PurchaseNoteListItem["status"] }) {
 export default function PurchaseNoteListPage() {
   const router = useRouter();
   const { currentCompany, hasCompanyPermission } = useCompanyAccess();
-  const [purchaseNotes, setPurchaseNotes] = useState<PurchaseNoteListItem[]>([]);
+  const [purchaseNotes, setPurchaseNotes] = useState<PurchaseNoteListItem[]>(
+    [],
+  );
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -99,34 +102,33 @@ export default function PurchaseNoteListPage() {
   }, [canReadPurchaseNotes, currentCompany?.id]);
 
   const filteredPurchaseNotes = useMemo(() => {
-    const value = search.trim().toLowerCase();
+    const value = search.trim();
     if (!value) return purchaseNotes;
 
     return purchaseNotes.filter((note) =>
-      [
-        note.company.name,
-        note.company.code,
-        note.department.name,
-        note.docType,
-        note.docId,
-        note.purchaseNo,
-        note.createdBy?.fullName,
-        note.createdBy?.email,
-        note.vendorAccount?.accountName,
-        note.referenceDocNo,
-        sourceMemoLabel(note),
-        formatPaymentTerm(note.paymentTerm),
-        note.currency,
-        note.status,
-      ]
-        .filter(Boolean)
-        .some((item) => String(item).toLowerCase().includes(value)),
-      );
+      matchesTableSearch(
+        [
+          note.company.name,
+          note.company.code,
+          note.department.name,
+          note.docType,
+          note.docId,
+          note.purchaseNo,
+          note.createdBy?.fullName,
+          note.createdBy?.email,
+          note.vendorAccount?.accountName,
+          note.referenceDocNo,
+          sourceMemoLabel(note),
+          formatPaymentTerm(note.paymentTerm),
+          note.currency,
+          note.status,
+        ],
+        value,
+      ),
+    );
   }, [purchaseNotes, search]);
-  const {
-    paginatedItems: paginatedPurchaseNotes,
-    ...purchaseNotePagination
-  } = usePagination(filteredPurchaseNotes);
+  const { paginatedItems: paginatedPurchaseNotes, ...purchaseNotePagination } =
+    usePagination(filteredPurchaseNotes);
 
   if (!canReadPurchaseNotes) {
     return (
@@ -140,7 +142,7 @@ export default function PurchaseNoteListPage() {
 
   return (
     <div className="min-h-screen bg-muted/30 p-6">
-      <div className="mx-auto max-w-[1500px] space-y-5">
+      <div className="mx-auto w-full max-w-none space-y-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
@@ -165,15 +167,11 @@ export default function PurchaseNoteListPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-2 rounded-2xl border bg-background px-3 py-2">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search purchase notes"
-            className="h-9 border-0 px-0 shadow-none focus-visible:ring-0"
-          />
-        </div>
+        <TableSearchBar
+          search={search}
+          onSearch={setSearch}
+          placeholder="Search purchase notes"
+        />
 
         {loading ? (
           <div className="flex h-48 items-center justify-center rounded-2xl border bg-background text-sm text-muted-foreground">
@@ -204,13 +202,23 @@ export default function PurchaseNoteListPage() {
                     <th className="px-3 py-3 font-medium">Doc Date</th>
                     <th className="px-3 py-3 font-medium">Reference Doc No</th>
                     <th className="px-3 py-3 font-medium">Source Memo</th>
-                    <th className="px-3 py-3 text-right font-medium">Doc Qty</th>
-                    <th className="px-3 py-3 text-right font-medium">Doc Weight</th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      Doc Qty
+                    </th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      Doc Weight
+                    </th>
                     <th className="px-3 py-3 font-medium">Payment Term</th>
                     <th className="px-3 py-3 font-medium">Currency</th>
-                    <th className="px-3 py-3 text-right font-medium">Doc Grand T. Price</th>
-                    <th className="px-3 py-3 text-right font-medium">Main Grand T. Price</th>
-                    <th className="px-3 py-3 text-right font-medium">Balance Amount</th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      Doc Grand T. Price
+                    </th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      Main Grand T. Price
+                    </th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      Balance Amount
+                    </th>
                     <th className="px-3 py-3 font-medium">Doc Status</th>
                   </tr>
                 </thead>
@@ -220,7 +228,9 @@ export default function PurchaseNoteListPage() {
                       <td className="px-3 py-3">{note.company.name}</td>
                       <td className="px-3 py-3">{note.department.name}</td>
                       <td className="px-3 py-3">
-                        {note.createdBy?.fullName ?? note.createdBy?.email ?? "-"}
+                        {note.createdBy?.fullName ??
+                          note.createdBy?.email ??
+                          "-"}
                       </td>
                       <td className="px-3 py-3">{note.docType}</td>
                       <td className="px-3 py-3">{formatDate(note.openDate)}</td>
@@ -229,7 +239,9 @@ export default function PurchaseNoteListPage() {
                           type="button"
                           className="font-medium text-blue-600 hover:underline"
                           onClick={() =>
-                            router.push(`/user/purchase/purchase-notes/${note.id}`)
+                            router.push(
+                              `/user/purchase/purchase-notes/${note.id}`,
+                            )
                           }
                         >
                           {note.docId}
@@ -243,7 +255,9 @@ export default function PurchaseNoteListPage() {
                       <td className="px-3 py-3 text-emerald-600">
                         {formatDate(note.docDate)}
                       </td>
-                      <td className="px-3 py-3">{note.referenceDocNo ?? "-"}</td>
+                      <td className="px-3 py-3">
+                        {note.referenceDocNo ?? "-"}
+                      </td>
                       <td className="px-3 py-3">
                         {note.sourceMemos && note.sourceMemos.length > 0 ? (
                           <div className="flex flex-wrap gap-1.5">

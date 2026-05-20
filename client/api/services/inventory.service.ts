@@ -2,6 +2,15 @@ import axiosInstance from "@/api/axios";
 
 type Scope = "user";
 
+export type LotStatus =
+  | "STOCK"
+  | "MEMO"
+  | "MEMO_OUT"
+  | "IN_PROCESS"
+  | "PROCESSED"
+  | "SOLD"
+  | "RETURNED";
+
 export type ReturnInventoryItemsPayload = {
   departmentId: string;
   itemIds: string[];
@@ -32,9 +41,19 @@ export type InventoryMemoDocument = {
   currency: string;
 };
 
+export type InventoryProductionDocument = {
+  id: string;
+  docId: number;
+  productionNo: string;
+  docType: string;
+  docDate: string;
+  status: "OPEN" | "CLOSED" | "CANCELLED";
+};
+
 export type InventoryOriginDocument =
   | (InventoryMemoDocument & { documentType: "MEMO" })
-  | (InventoryPurchaseDocument & { documentType: "PURCHASE_NOTE" });
+  | (InventoryPurchaseDocument & { documentType: "PURCHASE_NOTE" })
+  | (InventoryProductionDocument & { documentType: "PRODUCTION" });
 
 export type InventoryItemListItem = {
   id: string;
@@ -65,7 +84,7 @@ export type InventoryItemListItem = {
   remark?: string | null;
   departmentAccountName: string;
   locationAccountName: string;
-  status: "STOCK" | "MEMO" | "MEMO_OUT" | "SOLD" | "RETURNED";
+  status: LotStatus;
   createdAt: string;
   company: {
     id: string;
@@ -88,6 +107,7 @@ export type InventoryItemListItem = {
   memoReturn?: InventoryMemoDocument | null;
   purchaseNote?: InventoryPurchaseDocument | null;
   memo?: InventoryMemoDocument | null;
+  returnedFromProduction?: InventoryProductionDocument | null;
 };
 
 export async function getInventoryItems(

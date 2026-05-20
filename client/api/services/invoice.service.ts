@@ -1,5 +1,5 @@
 import axiosInstance from "@/api/axios";
-import type { InventoryItemListItem } from "@/api/services/inventory.service";
+import type { InventoryItemListItem, LotStatus } from "@/api/services/inventory.service";
 
 type Scope = "user";
 
@@ -87,7 +87,7 @@ export type InvoiceItem = {
     itemId: string;
     lotId: number;
     lotName: string;
-    status: "STOCK" | "MEMO" | "MEMO_OUT" | "SOLD" | "RETURNED";
+    status: LotStatus;
     purchaseNote?: {
       id: string;
       docId: number;

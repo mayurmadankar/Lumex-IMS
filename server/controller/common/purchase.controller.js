@@ -149,10 +149,23 @@ const mapMemoDocument = (memo) =>
         status: memo.status,
         paymentTerm: memo.paymentTerm,
         currency: memo.currency,
+    }
+    : null;
+
+const mapProductionDocument = (document) =>
+  document
+    ? {
+        id: document.id,
+        docId: document.docId,
+        productionNo: document.productionNo,
+        docType: document.docType,
+        docDate: normalizeDate(document.docDate),
+        status: document.status,
       }
     : null;
 
-const mapOriginDocument = ({ memo, purchase }) => {
+const mapOriginDocument = ({ memo, purchase, production }) => {
+  if (production) return { documentType: "PRODUCTION", ...production };
   if (memo) return { documentType: "MEMO", ...memo };
   if (purchase) return { documentType: "PURCHASE_NOTE", ...purchase };
   return null;
@@ -163,6 +176,7 @@ const mapInventoryItem = (item) => {
   const memo = mapMemoDocument(item.memo);
   const memoReturn = mapMemoDocument(item.memoReturn);
   const purchaseReturn = mapPurchaseDocument(item.purchaseReturn);
+  const returnedFromProduction = mapProductionDocument(item.returnedFromProduction);
 
   return {
     id: item.id,
@@ -192,13 +206,14 @@ const mapInventoryItem = (item) => {
     company: item.company,
     department: item.department,
     vendorAccount: item.vendorAccount,
-    originDocument: mapOriginDocument({ memo, purchase }),
+    originDocument: mapOriginDocument({ memo, purchase, production: returnedFromProduction }),
     originMemo: memo,
     purchase,
     purchaseReturn,
     memoReturn,
     purchaseNote: purchase,
     memo,
+    returnedFromProduction,
   };
 };
 
@@ -498,6 +513,7 @@ const inventoryItemInclude = {
   purchaseReturn: { select: { id: true, docId: true, purchaseNo: true, purchaseFrom: true, docType: true, docDate: true, status: true, paymentTerm: true, currency: true } },
   memo: { select: { id: true, docId: true, memoNo: true, docType: true, docDate: true, status: true, paymentTerm: true, currency: true } },
   memoReturn: { select: { id: true, docId: true, memoNo: true, docType: true, docDate: true, status: true, paymentTerm: true, currency: true } },
+  returnedFromProduction: { select: { id: true, docId: true, productionNo: true, docType: true, docDate: true, status: true } },
 };
 
 export const createPurchaseNote = async (req, res) => {
@@ -888,10 +904,15 @@ export const getInventoryItems = async (req, res) => {
     }
   }
 
+  const stockOriginClauses = [
+    { purchaseNoteId: { not: null } },
+    { returnedFromProductionId: { not: null } },
+  ];
+
   const where = {
     ...(departmentId ? { departmentId: { in: departmentIds } } : {}),
-    status: "STOCK",
-    purchaseNoteId: { not: null },
+    status: { in: ["STOCK", "IN_PROCESS", "PROCESSED"] },
+    OR: stockOriginClauses,
   };
 
   if (companyId) {
@@ -901,7 +922,7 @@ export const getInventoryItems = async (req, res) => {
   const searchValue = String(search ?? "").trim();
 
   if (searchValue) {
-    where.OR = [
+    const searchClauses = [
       /^\d+$/.test(searchValue)
         ? { purchaseNote: { docId: Number(searchValue) } }
         : undefined,
@@ -918,6 +939,12 @@ export const getInventoryItems = async (req, res) => {
       { memo: { memoNo: { contains: searchValue, mode: "insensitive" } } },
       { vendorAccount: { accountName: { contains: searchValue, mode: "insensitive" } } },
     ].filter(Boolean);
+
+    where.AND = [
+      { OR: stockOriginClauses },
+      { OR: searchClauses },
+    ];
+    delete where.OR;
   }
 
   const inventoryItems = await prisma.inventoryItem.findMany({
@@ -1004,7 +1031,10 @@ export const getInventoryItemByLot = async (req, res) => {
       ...(companyId ? { companyId: String(companyId) } : {}),
       lotId,
       status: "STOCK",
-      purchaseNoteId: { not: null },
+      OR: [
+        { purchaseNoteId: { not: null } },
+        { returnedFromProductionId: { not: null } },
+      ],
     },
     include: inventoryItemInclude,
   });

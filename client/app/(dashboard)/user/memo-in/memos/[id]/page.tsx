@@ -160,7 +160,7 @@ export default function MemoDetailPage() {
 
   return (
     <div className="min-h-screen bg-muted/30 p-6">
-      <div className="mx-auto max-w-[1500px] space-y-5">
+      <div className="mx-auto w-full max-w-none space-y-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">

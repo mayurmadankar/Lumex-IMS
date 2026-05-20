@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, RotateCcw, Search, ShoppingCart } from "lucide-react";
+import { Loader2, RotateCcw, ShoppingCart } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -15,6 +15,7 @@ import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/input";
 import Modal, { ModalBody, ModalFooter } from "@/components/ui/modal";
 import Pagination from "@/components/ui/pagination";
+import { TableSearchBar } from "@/components/ui/table-search-bar";
 import {
   Select,
   SelectContent,
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { permissionAllows, permissionsToMap } from "@/config/modules";
 import { usePagination } from "@/hooks/use-pagination";
+import { matchesTableSearch } from "@/lib/table-search";
 import { useAppSelector } from "@/store/hooks";
 
 const NO_PAYMENT_TERM = "__NONE__";
@@ -56,6 +58,8 @@ function StatusText({ status }: { status: MemoInventoryItem["status"] }) {
     STOCK: "text-emerald-600",
     MEMO: "text-rose-600",
     MEMO_OUT: "text-orange-600",
+    IN_PROCESS: "text-amber-600",
+    PROCESSED: "text-slate-500",
     SOLD: "text-blue-600",
     RETURNED: "text-slate-600",
   };
@@ -71,7 +75,9 @@ type MemoInventoryDocument =
   | NonNullable<MemoInventoryItem["memoReturn"]>;
 
 function originDocument(item: MemoInventoryItem) {
-  return item.originDocument ?? item.originMemo ?? item.memo ?? item.purchase ?? null;
+  return (
+    item.originDocument ?? item.originMemo ?? item.memo ?? item.purchase ?? null
+  );
 }
 
 function purchaseDocument(item: MemoInventoryItem) {
@@ -194,44 +200,43 @@ export default function MemoListPage() {
   }, [memoItems]);
 
   const filteredMemoItems = useMemo(() => {
-    const value = search.trim().toLowerCase();
+    const value = search.trim();
     if (!value) return memoItems;
 
     return memoItems.filter((item) =>
-      [
-        item.itemId,
-        item.itemMaster?.itemId,
-        item.itemMaster?.itemName,
-        item.itemMaster?.itemType,
-        item.itemType,
-        item.lotId,
-        originDocument(item)?.docId,
-        documentNo(originDocument(item)),
-        purchaseDocument(item)?.docId,
-        documentNo(purchaseDocument(item)),
-        returnDocument(item)?.docId,
-        documentNo(returnDocument(item)),
-        item.lotName,
-        item.labAccountName,
-        item.certificateNo,
-        item.locationAccountName,
-        item.company?.name,
-        item.company?.code,
-        item.status,
-        item.remark,
-        item.vendorAccount?.accountName,
-        currentDocument(item)?.status,
-        currentDocument(item)?.paymentTerm,
-        currentDocument(item)?.currency,
-      ]
-        .filter(Boolean)
-        .some((entry) => String(entry).toLowerCase().includes(value)),
+      matchesTableSearch(
+        [
+          item.itemId,
+          item.itemMaster?.itemId,
+          item.itemMaster?.itemName,
+          item.itemMaster?.itemType,
+          item.itemType,
+          item.lotId,
+          originDocument(item)?.docId,
+          documentNo(originDocument(item)),
+          purchaseDocument(item)?.docId,
+          documentNo(purchaseDocument(item)),
+          returnDocument(item)?.docId,
+          documentNo(returnDocument(item)),
+          item.lotName,
+          item.labAccountName,
+          item.certificateNo,
+          item.locationAccountName,
+          item.company?.name,
+          item.company?.code,
+          item.status,
+          item.remark,
+          item.vendorAccount?.accountName,
+          currentDocument(item)?.status,
+          currentDocument(item)?.paymentTerm,
+          currentDocument(item)?.currency,
+        ],
+        value,
+      ),
     );
   }, [memoItems, search]);
-  const {
-    paginatedItems: paginatedMemoItems,
-    ...memoInventoryPagination
-  } = usePagination(filteredMemoItems);
+  const { paginatedItems: paginatedMemoItems, ...memoInventoryPagination } =
+    usePagination(filteredMemoItems);
 
   const selectedMemoItems = useMemo(
     () => memoItems.filter((item) => selectedItemIds.includes(item.id)),
@@ -256,17 +261,24 @@ export default function MemoListPage() {
   const selectedVendorIds = useMemo(
     () =>
       new Set(
-        selectedMemoItems.map((item) => item.vendorAccount?.id ?? "__MISSING__"),
+        selectedMemoItems.map(
+          (item) => item.vendorAccount?.id ?? "__MISSING__",
+        ),
       ),
     [selectedMemoItems],
   );
   const selectedVendorNames = useMemo(
-    () =>
-      [...new Set(selectedMemoItems.map((item) => item.vendorAccount?.accountName ?? "-"))],
+    () => [
+      ...new Set(
+        selectedMemoItems.map((item) => item.vendorAccount?.accountName ?? "-"),
+      ),
+    ],
     [selectedMemoItems],
   );
   const selectedCompanyNames = useMemo(
-    () => [...new Set(selectedMemoItems.map((item) => companyLabel(item.company)))],
+    () => [
+      ...new Set(selectedMemoItems.map((item) => companyLabel(item.company))),
+    ],
     [selectedMemoItems],
   );
   const hasVendorIssue =
@@ -351,13 +363,17 @@ export default function MemoListPage() {
       });
 
       const purchasedIds = new Set(selectedItemIds);
-      setMemoItems((items) => items.filter((item) => !purchasedIds.has(item.id)));
+      setMemoItems((items) =>
+        items.filter((item) => !purchasedIds.has(item.id)),
+      );
       setSelectedItemIds([]);
       setPurchasePaymentTerm("");
       setPurchaseRemark("");
       setPurchaseDocDate(todayInputValue());
       setPurchaseModalOpen(false);
-      toast.success(`Purchase created: ${response.data.purchaseNote.purchaseNo}`);
+      toast.success(
+        `Purchase created: ${response.data.purchaseNote.purchaseNo}`,
+      );
     } catch (error: unknown) {
       const apiError = error as {
         response?: { data?: { message?: string } };
@@ -396,7 +412,9 @@ export default function MemoListPage() {
       });
 
       const returnedIds = new Set(selectedItemIds);
-      setMemoItems((items) => items.filter((item) => !returnedIds.has(item.id)));
+      setMemoItems((items) =>
+        items.filter((item) => !returnedIds.has(item.id)),
+      );
       setSelectedItemIds([]);
       setReturnReferenceDocNo("");
       setReturnDocDate(todayInputValue());
@@ -426,7 +444,7 @@ export default function MemoListPage() {
 
   return (
     <div className="min-h-screen bg-muted/30 p-6">
-      <div className="mx-auto max-w-[1500px] space-y-5">
+      <div className="mx-auto w-full max-w-none space-y-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
@@ -466,15 +484,11 @@ export default function MemoListPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 rounded-2xl border bg-background px-3 py-2">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search memo stock"
-            className="h-9 border-0 px-0 shadow-none focus-visible:ring-0"
-          />
-        </div>
+        <TableSearchBar
+          search={search}
+          onSearch={setSearch}
+          placeholder="Search memo stock"
+        />
 
         {loading ? (
           <div className="flex h-48 items-center justify-center rounded-2xl border bg-background text-sm text-muted-foreground">
@@ -523,7 +537,9 @@ export default function MemoListPage() {
                     <th className="px-3 py-3 font-medium">Company</th>
                     <th className="px-3 py-3 font-medium">Vendor</th>
                     <th className="px-3 py-3 font-medium">Lot Status</th>
-                    <th className="px-3 py-3 text-right font-medium">Total Cost</th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      Total Cost
+                    </th>
                     <th className="px-3 py-3 font-medium">Date</th>
                     <th className="px-3 py-3 font-medium">Doc Status</th>
                     <th className="px-3 py-3 font-medium">Payment Terms</th>
@@ -573,7 +589,9 @@ export default function MemoListPage() {
                       <td className="px-3 py-3 text-right font-semibold">
                         {formatNumber(item.weight, 4)}
                       </td>
-                      <td className="px-3 py-3">{item.labAccountName || "-"}</td>
+                      <td className="px-3 py-3">
+                        {item.labAccountName || "-"}
+                      </td>
                       <td className="px-3 py-3">
                         <span className="font-medium text-blue-600">
                           {item.certificateNo || "-"}
@@ -582,8 +600,12 @@ export default function MemoListPage() {
                       <td className="px-3 py-3">
                         {item.parcelOrStone === "PARCEL" ? "Parcel" : "Stone"}
                       </td>
-                      <td className="px-3 py-3">{item.locationAccountName ?? "-"}</td>
-                      <td className="px-3 py-3">{companyLabel(item.company)}</td>
+                      <td className="px-3 py-3">
+                        {item.locationAccountName ?? "-"}
+                      </td>
+                      <td className="px-3 py-3">
+                        {companyLabel(item.company)}
+                      </td>
                       <td className="px-3 py-3">
                         {item.vendorAccount?.accountName ?? "-"}
                       </td>
@@ -701,7 +723,11 @@ export default function MemoListPage() {
               </Select>
             </Field>
             <Field label="Currency">
-              <Input value="USD" readOnly className="h-10 rounded-xl bg-muted" />
+              <Input
+                value="USD"
+                readOnly
+                className="h-10 rounded-xl bg-muted"
+              />
             </Field>
             <Field label="Remark">
               <Input
@@ -728,14 +754,18 @@ export default function MemoListPage() {
                   <th className="px-3 py-2 font-medium">Lot ID</th>
                   <th className="px-3 py-2 font-medium">Lot Name</th>
                   <th className="px-3 py-2 text-right font-medium">Weight</th>
-                  <th className="px-3 py-2 text-right font-medium">Total Cost</th>
+                  <th className="px-3 py-2 text-right font-medium">
+                    Total Cost
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {paginatedSelectedMemoItems.map((item) => (
                   <tr key={item.id} className="border-b last:border-0">
                     <td className="px-3 py-2">{itemLabel(item)}</td>
-                    <td className="px-3 py-2">{originDocument(item)?.docId ?? "-"}</td>
+                    <td className="px-3 py-2">
+                      {originDocument(item)?.docId ?? "-"}
+                    </td>
                     <td className="px-3 py-2">{item.lotId}</td>
                     <td className="px-3 py-2">{item.lotName}</td>
                     <td className="px-3 py-2 text-right">
@@ -774,7 +804,9 @@ export default function MemoListPage() {
             type="button"
             className="h-9 rounded-xl"
             onClick={handlePurchaseSelected}
-            disabled={isPurchasing || hasVendorIssue || selectedMemoItems.length === 0}
+            disabled={
+              isPurchasing || hasVendorIssue || selectedMemoItems.length === 0
+            }
           >
             {isPurchasing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -846,7 +878,9 @@ export default function MemoListPage() {
             <Field label="Reference Doc No">
               <Input
                 value={returnReferenceDocNo}
-                onChange={(event) => setReturnReferenceDocNo(event.target.value)}
+                onChange={(event) =>
+                  setReturnReferenceDocNo(event.target.value)
+                }
                 className="h-10 rounded-xl"
                 placeholder="Optional"
               />
@@ -873,7 +907,9 @@ export default function MemoListPage() {
             type="button"
             className="h-9 rounded-xl"
             onClick={handleReturnSelected}
-            disabled={isReturning || hasVendorIssue || selectedMemoItems.length === 0}
+            disabled={
+              isReturning || hasVendorIssue || selectedMemoItems.length === 0
+            }
           >
             {isReturning ? (
               <Loader2 className="h-4 w-4 animate-spin" />

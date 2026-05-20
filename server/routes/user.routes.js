@@ -7,6 +7,7 @@ import { createInvoice, createInvoiceFromInventory, getInvoice, getInvoiceReturn
 import { createItem, getItems } from "../controller/common/item.controller.js";
 import { createMemo, deleteMemo, getMemo, getMemoInventoryItemByLot, getMemoInventoryItems, getMemos, purchaseMemoInventoryItems, returnMemoInventoryItems } from "../controller/common/memo.controller.js";
 import { createMemoOut, getMemoOut, getMemoOutAccounts, getMemoOutInventoryItemByLot, getMemoOutReturnItemByLot, getMemoOuts, returnMemoOutItem } from "../controller/common/memoOut.controller.js";
+import { changeInventoryLocation, getProductionDocuments, getProductionInventoryItemByLot, getProductionReturnItemByLot, returnProductionParts, sendInventoryToProcess } from "../controller/common/production.controller.js";
 import { createPurchaseNote, getInventoryItemByLot, getInventoryItems, getPurchaseNote, getPurchaseNotes, returnInventoryItems } from "../controller/common/purchase.controller.js";
 import { createTransfer, createTransferReturn, getCompanyDepartments, getDepartmentUsers, getTransferReturnItemByLot, getTransfers } from "../controller/common/transfer.controller.js";
 import { authorizeDepartmentModule } from "../middleware/auth.middleware.js";
@@ -164,5 +165,13 @@ router.post("/transfers", expressErrorHandler(createTransfer));
 router.get("/transfer-return-items/lot/:lotId", expressErrorHandler(getTransferReturnItemByLot));
 router.post("/transfers/return", expressErrorHandler(createTransferReturn));
 router.get("/transfers", expressErrorHandler(getTransfers));
+
+// Production
+router.get("/production-inventory-items/lot/:lotId", expressErrorHandler(getProductionInventoryItemByLot));
+router.post("/production/change-location", expressErrorHandler(changeInventoryLocation));
+router.post("/production/send-to-process", expressErrorHandler(sendInventoryToProcess));
+router.get("/production-return-items/lot/:lotId", expressErrorHandler(getProductionReturnItemByLot));
+router.post("/production/return-parts", expressErrorHandler(returnProductionParts));
+router.get("/production-documents", expressErrorHandler(getProductionDocuments));
 
 export default router;

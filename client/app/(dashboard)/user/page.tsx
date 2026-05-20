@@ -181,16 +181,16 @@ function ModuleCard({
 
   return (
     <div
-      className={`flex flex-col overflow-hidden rounded-2xl border ${mod.borderColor} ${mod.bgTint}`}
+      className={`flex min-h-[218px] flex-col overflow-hidden rounded-2xl border shadow-sm ${mod.borderColor} ${mod.bgTint}`}
     >
-      <div className="flex items-center gap-3 border-b border-black/[0.06] px-4 py-3">
+      <div className="flex items-center gap-3 border-b border-black/[0.06] px-5 py-4">
         <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[10px] font-black tracking-widest text-white"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[11px] font-black tracking-widest text-white shadow-sm"
           style={{ backgroundColor: mod.color }}
         >
           {mod.abbr}
         </div>
-        <p className={`text-sm font-bold tracking-tight ${mod.textAccent}`}>
+        <p className={`text-base font-bold tracking-tight ${mod.textAccent}`}>
           {mod.title}
         </p>
         <span className="ml-auto text-[10px] font-semibold tabular-nums text-black/20">
@@ -207,12 +207,12 @@ function ModuleCard({
             <button
               key={action.key}
               onClick={() => onActionClick(action)}
-              className={`group flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-150 ${
-                isActive ? "bg-white" : "bg-white/90 hover:bg-white"
+              className={`group flex cursor-pointer items-center gap-3 px-5 py-3 text-left transition-colors duration-150 ${
+                isActive ? "bg-white" : "bg-white/90 hover:bg-white hover:shadow-inner"
               }`}
             >
-              <Icon className="h-3.5 w-3.5 shrink-0 text-black/35 transition-colors group-hover:text-black/65" />
-              <span className="flex-1 text-[12px] font-medium tracking-wide text-black/65 transition-colors group-hover:text-black/90">
+              <Icon className="h-4 w-4 shrink-0 text-black/35 transition-colors group-hover:text-black/65" />
+              <span className="flex-1 text-[13px] font-medium tracking-wide text-black/65 transition-colors group-hover:text-black/90">
                 {action.label}
               </span>
               {action.isNew && (
@@ -232,7 +232,7 @@ function ModuleCard({
       {hasMore && (
         <button
           onClick={() => setExpanded((value) => !value)}
-          className={`border-t border-black/[0.05] px-4 py-2 text-[11px] font-semibold tracking-wide transition-colors hover:bg-white/50 ${mod.textAccent}`}
+          className={`cursor-pointer border-t border-black/[0.05] px-5 py-2.5 text-[11px] font-semibold tracking-wide transition-colors hover:bg-white/60 ${mod.textAccent}`}
         >
           {expanded ? "Show less" : `+${mod.actions.length - 4} more actions`}
         </button>
@@ -383,6 +383,21 @@ export default function UserPage() {
       return;
     }
 
+    if (action.key === "CHANGE_LOCATION") {
+      router.push("/user/production/change-location");
+      return;
+    }
+
+    if (action.key === "SEND_TO_PROCESS") {
+      router.push("/user/production/send-to-process");
+      return;
+    }
+
+    if (action.key === "RETURN_PARTS") {
+      router.push("/user/production/return-parts");
+      return;
+    }
+
     if (action.key === "INVOICE_LIST") {
       router.push("/user/invoice/invoices");
       return;
@@ -433,7 +448,7 @@ export default function UserPage() {
 
   return (
     <div className="min-h-screen bg-gray-50/80">
-      <main className="mx-auto max-w-screen-xl space-y-6 px-6 py-6">
+      <main className="mx-auto w-full max-w-[1800px] space-y-7 px-5 py-6 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="flex-1">
             <p className="mb-0.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
@@ -491,7 +506,7 @@ export default function UserPage() {
             This department has no enabled module permissions.
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {visibleModules.map((mod) => (
               <ModuleCard
                 key={mod.id}

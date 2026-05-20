@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Plus, Search } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/input";
 import Pagination from "@/components/ui/pagination";
+import { TableSearchBar } from "@/components/ui/table-search-bar";
 import {
   Select,
   SelectContent,
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { permissionAllows, permissionsToMap } from "@/config/modules";
 import { usePagination } from "@/hooks/use-pagination";
+import { matchesTableSearch } from "@/lib/table-search";
 import { useAppSelector } from "@/store/hooks";
 
 const unitOfWeightOptions: Array<{ value: UnitOfWeight; label: string }> = [
@@ -102,13 +104,14 @@ export default function ItemListPage() {
   }, [canReadItems, selectedDepartmentId]);
 
   const filteredItems = useMemo(() => {
-    const value = search.trim().toLowerCase();
+    const value = search.trim();
     if (!value) return items;
 
     return items.filter((item) =>
-      [item.itemId, item.itemName, item.itemType, item.uow, item.uom]
-        .filter(Boolean)
-        .some((entry) => String(entry).toLowerCase().includes(value)),
+      matchesTableSearch(
+        [item.itemId, item.itemName, item.itemType, item.uow, item.uom],
+        value,
+      ),
     );
   }, [items, search]);
   const { paginatedItems, ...itemPagination } = usePagination(filteredItems);
@@ -143,7 +146,9 @@ export default function ItemListPage() {
         uom,
       });
       const item = response.data.item as ItemListItem;
-      setItems((current) => [...current, item].sort((a, b) => a.itemId - b.itemId));
+      setItems((current) =>
+        [...current, item].sort((a, b) => a.itemId - b.itemId),
+      );
       resetForm();
       toast.success(`Item created: ${item.itemId}`);
     } catch (error: unknown) {
@@ -168,7 +173,7 @@ export default function ItemListPage() {
 
   return (
     <div className="min-h-screen bg-muted/30 p-6">
-      <div className="mx-auto max-w-[1200px] space-y-5">
+      <div className="mx-auto w-full max-w-none space-y-5">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
             Inventory
@@ -204,7 +209,10 @@ export default function ItemListPage() {
               />
             </Field>
             <Field label="UOW" required>
-              <Select value={uow} onValueChange={(value) => setUow(value as UnitOfWeight)}>
+              <Select
+                value={uow}
+                onValueChange={(value) => setUow(value as UnitOfWeight)}
+              >
                 <SelectTrigger className="h-10 w-full rounded-xl">
                   <SelectValue />
                 </SelectTrigger>
@@ -235,7 +243,11 @@ export default function ItemListPage() {
               </Select>
             </Field>
             <div className="flex items-end">
-              <Button type="submit" className="h-10 w-full rounded-xl" disabled={saving}>
+              <Button
+                type="submit"
+                className="h-10 w-full rounded-xl"
+                disabled={saving}
+              >
                 {saving ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
@@ -247,15 +259,11 @@ export default function ItemListPage() {
           </form>
         )}
 
-        <div className="flex items-center gap-2 rounded-2xl border bg-background px-3 py-2">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search items"
-            className="h-9 border-0 px-0 shadow-none focus-visible:ring-0"
-          />
-        </div>
+        <TableSearchBar
+          search={search}
+          onSearch={setSearch}
+          placeholder="Search items"
+        />
 
         {loading ? (
           <div className="flex h-48 items-center justify-center rounded-2xl border bg-background text-sm text-muted-foreground">
@@ -300,7 +308,9 @@ export default function ItemListPage() {
                           ? `${item.company.name} (${item.company.code})`
                           : item.company.name}
                       </td>
-                      <td className="px-3 py-3">{formatDate(item.createdAt)}</td>
+                      <td className="px-3 py-3">
+                        {formatDate(item.createdAt)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

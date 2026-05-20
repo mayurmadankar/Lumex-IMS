@@ -127,6 +127,13 @@ const buildPrefix = (company) =>
 const buildInvoiceNo = (company, number) =>
   `${buildPrefix(company)}-INV-${String(number).padStart(6, "0")}`;
 
+const invoiceStockOriginWhere = {
+  OR: [
+    { purchaseNoteId: { not: null } },
+    { returnedFromProductionId: { not: null } },
+  ],
+};
+
 const buildPurchaseNo = (company, number) =>
   `${buildPrefix(company)}-PN-${String(number).padStart(6, "0")}`;
 
@@ -910,8 +917,11 @@ export const createInvoiceFromInventory = async (req, res) => {
   });
 
   if (!inventoryItem) return sendError(res, "Inventory item not found", 404);
-  if (inventoryItem.status !== "STOCK" || !inventoryItem.purchaseNoteId) {
-    return sendError(res, "Only purchased stock items can be invoiced", 400);
+  if (
+    inventoryItem.status !== "STOCK" ||
+    (!inventoryItem.purchaseNoteId && !inventoryItem.returnedFromProductionId)
+  ) {
+    return sendError(res, "Only available stock items can be invoiced", 400);
   }
 
   const unitPrice =
@@ -987,7 +997,7 @@ export const createInvoiceFromInventory = async (req, res) => {
           id: inventoryItem.id,
           departmentId: department.id,
           status: "STOCK",
-          purchaseNoteId: { not: null },
+          ...invoiceStockOriginWhere,
         },
         data: { status: "SOLD" },
       });

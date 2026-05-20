@@ -1,16 +1,17 @@
 "use client";
 
-import { FileMinus, FilePlus, Loader2, Search } from "lucide-react";
+import { FileMinus, FilePlus, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { getTransfers } from "@/api/services/transfer.service";
 import type { TransferListItem } from "@/api/services/transfer.service";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import Pagination from "@/components/ui/pagination";
+import { TableSearchBar } from "@/components/ui/table-search-bar";
 import { permissionAllows, permissionsToMap } from "@/config/modules";
 import { usePagination } from "@/hooks/use-pagination";
+import { matchesTableSearch } from "@/lib/table-search";
 import { useAppSelector } from "@/store/hooks";
 
 function formatDate(value: string) {
@@ -36,7 +37,7 @@ function itemName(transfer: TransferListItem) {
 
   return item.itemMaster
     ? `${item.itemMaster.itemId} - ${item.itemMaster.itemName}`
-    : item.itemType ?? item.itemId;
+    : (item.itemType ?? item.itemId);
 }
 
 export default function TransferListPage() {
@@ -46,7 +47,8 @@ export default function TransferListPage() {
     (state) => state.company.accessibleCompanies,
   );
   const selectedCompanyId = useAppSelector(
-    (state) => state.company.selectedCompanyId ?? state.auth.user?.selectedCompanyId,
+    (state) =>
+      state.company.selectedCompanyId ?? state.auth.user?.selectedCompanyId,
   );
   const [transfers, setTransfers] = useState<TransferListItem[]>([]);
   const [search, setSearch] = useState("");
@@ -144,37 +146,36 @@ export default function TransferListPage() {
   }, [canReadTransfers, currentCompany?.id]);
 
   const filteredTransfers = useMemo(() => {
-    const value = search.trim().toLowerCase();
+    const value = search.trim();
     if (!value) return transfers;
 
     return transfers.filter((transfer) =>
-      [
-        transfer.transferNo,
-        transfer.docType,
-        transfer.docId,
-        transfer.referenceDocNo,
-        transfer.notes,
-        transfer.company.name,
-        transfer.company.code,
-        transfer.fromDepartment.name,
-        transfer.toDepartment.name,
-        transfer.toUser?.fullName,
-        transfer.toUser?.email,
-        transfer.createdBy?.fullName,
-        transfer.inventoryItem?.lotId,
-        transfer.inventoryItem?.lotName,
-        transfer.inventoryItem?.itemId,
-        transfer.inventoryItem?.itemMaster?.itemName,
-        transfer.inventoryItem?.certificateNo,
-      ]
-        .filter(Boolean)
-        .some((entry) => String(entry).toLowerCase().includes(value)),
+      matchesTableSearch(
+        [
+          transfer.transferNo,
+          transfer.docType,
+          transfer.docId,
+          transfer.referenceDocNo,
+          transfer.notes,
+          transfer.company.name,
+          transfer.company.code,
+          transfer.fromDepartment.name,
+          transfer.toDepartment.name,
+          transfer.toUser?.fullName,
+          transfer.toUser?.email,
+          transfer.createdBy?.fullName,
+          transfer.inventoryItem?.lotId,
+          transfer.inventoryItem?.lotName,
+          transfer.inventoryItem?.itemId,
+          transfer.inventoryItem?.itemMaster?.itemName,
+          transfer.inventoryItem?.certificateNo,
+        ],
+        value,
+      ),
     );
   }, [search, transfers]);
-  const {
-    paginatedItems: paginatedTransfers,
-    ...transferPagination
-  } = usePagination(filteredTransfers);
+  const { paginatedItems: paginatedTransfers, ...transferPagination } =
+    usePagination(filteredTransfers);
 
   if (!canReadTransfers) {
     return (
@@ -188,7 +189,7 @@ export default function TransferListPage() {
 
   return (
     <div className="min-h-screen bg-muted/30 p-6">
-      <div className="mx-auto max-w-[1500px] space-y-5">
+      <div className="mx-auto w-full max-w-none space-y-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
@@ -207,7 +208,9 @@ export default function TransferListPage() {
               <Button
                 variant="outline"
                 className="h-9 rounded-xl"
-                onClick={() => router.push("/user/transfer/new-transfer-return")}
+                onClick={() =>
+                  router.push("/user/transfer/new-transfer-return")
+                }
               >
                 <FileMinus className="h-4 w-4" />
                 New Transfer Return
@@ -226,15 +229,11 @@ export default function TransferListPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 rounded-2xl border bg-background px-3 py-2">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search transfers"
-            className="h-9 border-0 px-0 shadow-none focus-visible:ring-0"
-          />
-        </div>
+        <TableSearchBar
+          search={search}
+          onSearch={setSearch}
+          placeholder="Search transfers"
+        />
 
         {loading ? (
           <div className="flex h-48 items-center justify-center rounded-2xl border bg-background text-sm text-muted-foreground">
@@ -288,20 +287,24 @@ export default function TransferListPage() {
                         {transfer.inventoryItem?.lotId ?? "-"}
                       </td>
                       <td className="px-3 py-3">{itemName(transfer)}</td>
-                      <td className="px-3 py-3">{transfer.fromDepartment.name}</td>
-                      <td className="px-3 py-3">{transfer.toDepartment.name}</td>
+                      <td className="px-3 py-3">
+                        {transfer.fromDepartment.name}
+                      </td>
+                      <td className="px-3 py-3">
+                        {transfer.toDepartment.name}
+                      </td>
                       <td className="px-3 py-3">
                         {transfer.toUser?.fullName ?? "-"}
                       </td>
                       <td className="px-3 py-3">
                         {transfer.docType === "Transfer Return"
-                          ? transfer.createdBy?.fullName ?? "-"
+                          ? (transfer.createdBy?.fullName ?? "-")
                           : "-"}
                       </td>
                       <td className="px-3 py-3">
                         {transfer.docType === "Transfer Return"
-                          ? transfer.toUser?.fullName ??
-                            transfer.toDepartment.name
+                          ? (transfer.toUser?.fullName ??
+                            transfer.toDepartment.name)
                           : "-"}
                       </td>
                       <td className="px-3 py-3 text-right">
@@ -316,7 +319,9 @@ export default function TransferListPage() {
                       <td className="px-3 py-3">
                         {transfer.referenceDocNo ?? "-"}
                       </td>
-                      <td className="px-3 py-3">{formatDate(transfer.docDate)}</td>
+                      <td className="px-3 py-3">
+                        {formatDate(transfer.docDate)}
+                      </td>
                       <td className="px-3 py-3">
                         {transfer.createdBy?.fullName ?? "-"}
                       </td>

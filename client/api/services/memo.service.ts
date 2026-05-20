@@ -1,4 +1,5 @@
 import axiosInstance from "@/api/axios";
+import type { LotStatus } from "@/api/services/inventory.service";
 
 type Scope = "user";
 
@@ -148,7 +149,7 @@ export type MemoInventoryItem = {
   parcelOrStone: "PARCEL" | "STONE";
   departmentAccountName?: string | null;
   locationAccountName?: string | null;
-  status: "STOCK" | "MEMO" | "MEMO_OUT" | "SOLD" | "RETURNED";
+  status: LotStatus;
   createdAt: string;
   shape?: string | null;
   color?: string | null;

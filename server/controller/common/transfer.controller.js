@@ -55,6 +55,13 @@ const buildPrefix = (company) =>
 const buildTransferNo = (company, number) =>
   `${buildPrefix(company)}-TRF-${String(number).padStart(6, "0")}`;
 
+const transferableStockOriginWhere = {
+  OR: [
+    { purchaseNoteId: { not: null } },
+    { returnedFromProductionId: { not: null } },
+  ],
+};
+
 const reserveTransferSequence = async ({ tx, companyId }) => {
   const rows = await tx.$queryRaw`
     INSERT INTO "InventorySequence" (
@@ -283,7 +290,7 @@ export const createTransfer = async (req, res) => {
       id: data.inventoryItemId,
       companyId: data.companyId,
       status: "STOCK",
-      purchaseNoteId: { not: null },
+      ...transferableStockOriginWhere,
     },
     include: {
       company: { select: { id: true, name: true, code: true } },
@@ -402,7 +409,7 @@ export const createTransfer = async (req, res) => {
           companyId: data.companyId,
           departmentId: inventoryItem.departmentId,
           status: "STOCK",
-          purchaseNoteId: { not: null },
+          ...transferableStockOriginWhere,
         },
         data: {
           departmentId: toDepartment.id,
@@ -493,7 +500,7 @@ export const getTransferReturnItemByLot = async (req, res) => {
       departmentId: { in: departmentIds },
       lotId,
       status: "STOCK",
-      purchaseNoteId: { not: null },
+      ...transferableStockOriginWhere,
     },
     include: transferInclude.inventoryItem.include,
   });
@@ -543,7 +550,7 @@ export const createTransferReturn = async (req, res) => {
       id: data.inventoryItemId,
       companyId: data.companyId,
       status: "STOCK",
-      purchaseNoteId: { not: null },
+      ...transferableStockOriginWhere,
     },
     include: transferInclude.inventoryItem.include,
   });
@@ -648,7 +655,7 @@ export const createTransferReturn = async (req, res) => {
           companyId: data.companyId,
           departmentId: inventoryItem.departmentId,
           status: "STOCK",
-          purchaseNoteId: { not: null },
+          ...transferableStockOriginWhere,
         },
         data: {
           departmentId: latestTransfer.fromDepartmentId,

@@ -1,23 +1,17 @@
 "use client";
 
-import {
-  Building2,
-  Loader2,
-  Mail,
-  Phone,
-  PlusSquare,
-  Search,
-} from "lucide-react";
+import { Building2, Loader2, Mail, Phone, PlusSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { getAccounts } from "@/api/services/account.service";
 import type { AccountListItem } from "@/api/services/account.service";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import Pagination from "@/components/ui/pagination";
+import { TableSearchBar } from "@/components/ui/table-search-bar";
 import { permissionAllows, permissionsToMap } from "@/config/modules";
 import { usePagination } from "@/hooks/use-pagination";
+import { matchesTableSearch } from "@/lib/table-search";
 import { useAppSelector } from "@/store/hooks";
 
 const ACCOUNT_TYPE_ORDER = ["Customer", "Vendor", "Group Customer"];
@@ -39,7 +33,9 @@ function StatusPill({ status }: { status: AccountListItem["status"] }) {
   };
 
   return (
-    <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ${styles[status]}`}>
+    <span
+      className={`rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ${styles[status]}`}
+    >
       {status}
     </span>
   );
@@ -57,7 +53,9 @@ function AccountTable({
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold">{title}</h2>
-          <p className="text-xs text-muted-foreground">{accounts.length} accounts</p>
+          <p className="text-xs text-muted-foreground">
+            {accounts.length} accounts
+          </p>
         </div>
       </div>
 
@@ -115,7 +113,9 @@ function AccountTable({
                     </div>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    {[account.city, account.countryIso2].filter(Boolean).join(", ") || "-"}
+                    {[account.city, account.countryIso2]
+                      .filter(Boolean)
+                      .join(", ") || "-"}
                   </td>
                   <td className="px-4 py-3">
                     <StatusPill status={account.status} />
@@ -136,7 +136,9 @@ function AccountTable({
 export default function AccountListPage() {
   const router = useRouter();
   const user = useAppSelector((state) => state.auth.user);
-  const persistedPermissions = useAppSelector((state) => state.permission.permissions);
+  const persistedPermissions = useAppSelector(
+    (state) => state.permission.permissions,
+  );
   const [accounts, setAccounts] = useState<AccountListItem[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -146,13 +148,20 @@ export default function AccountListPage() {
   const selectedDepartmentId =
     user?.selectedDepartmentId ?? departmentAccesses[0]?.departmentId ?? null;
   const selectedAccess =
-    departmentAccesses.find((access) => access.departmentId === selectedDepartmentId) ??
-    departmentAccesses[0];
+    departmentAccesses.find(
+      (access) => access.departmentId === selectedDepartmentId,
+    ) ?? departmentAccesses[0];
   const permissionMap = selectedAccess
     ? permissionsToMap(selectedAccess.permissions)
     : persistedPermissions;
-  const canReadAccounts = permissionAllows(permissionMap.ACCOUNT_LIST, "READ_ONLY");
-  const canCreateAccount = permissionAllows(permissionMap.NEW_ACCOUNT, "READ_WRITE");
+  const canReadAccounts = permissionAllows(
+    permissionMap.ACCOUNT_LIST,
+    "READ_ONLY",
+  );
+  const canCreateAccount = permissionAllows(
+    permissionMap.NEW_ACCOUNT,
+    "READ_WRITE",
+  );
 
   useEffect(() => {
     if (!canReadAccounts || !selectedDepartmentId) {
@@ -164,7 +173,9 @@ export default function AccountListPage() {
       try {
         setLoading(true);
         setError(null);
-        const response = await getAccounts("user", { departmentId: selectedDepartmentId });
+        const response = await getAccounts("user", {
+          departmentId: selectedDepartmentId,
+        });
         setAccounts(response.data.accounts ?? []);
       } catch {
         setError("Failed to load accounts.");
@@ -177,28 +188,27 @@ export default function AccountListPage() {
   }, [canReadAccounts, selectedDepartmentId]);
 
   const filteredAccounts = useMemo(() => {
-    const value = search.trim().toLowerCase();
+    const value = search.trim();
     if (!value) return accounts;
 
     return accounts.filter((account) =>
-      [
-        account.accountName,
-        account.accountIndex,
-        account.accountType.name,
-        account.company.name,
-        account.originDepartment?.name,
-        account.email,
-        account.phone1,
-        account.trnNo,
-      ]
-        .filter(Boolean)
-        .some((item) => String(item).toLowerCase().includes(value)),
+      matchesTableSearch(
+        [
+          account.accountName,
+          account.accountIndex,
+          account.accountType.name,
+          account.company.name,
+          account.originDepartment?.name,
+          account.email,
+          account.phone1,
+          account.trnNo,
+        ],
+        value,
+      ),
     );
   }, [accounts, search]);
-  const {
-    paginatedItems: paginatedAccounts,
-    ...accountPagination
-  } = usePagination(filteredAccounts);
+  const { paginatedItems: paginatedAccounts, ...accountPagination } =
+    usePagination(filteredAccounts);
 
   const groupedAccounts = useMemo(() => {
     const groups = new Map<string, AccountListItem[]>();
@@ -208,8 +218,12 @@ export default function AccountListPage() {
     });
 
     return [
-      ...ACCOUNT_TYPE_ORDER.map((name) => [name, groups.get(name) ?? []] as const),
-      ...[...groups.entries()].filter(([name]) => !ACCOUNT_TYPE_ORDER.includes(name)),
+      ...ACCOUNT_TYPE_ORDER.map(
+        (name) => [name, groups.get(name) ?? []] as const,
+      ),
+      ...[...groups.entries()].filter(
+        ([name]) => !ACCOUNT_TYPE_ORDER.includes(name),
+      ),
     ];
   }, [paginatedAccounts]);
 
@@ -225,13 +239,15 @@ export default function AccountListPage() {
 
   return (
     <div className="min-h-screen bg-muted/30 p-6">
-      <div className="mx-auto max-w-screen-xl space-y-5">
+      <div className="mx-auto w-full max-w-none space-y-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
               Accounting
             </p>
-            <h1 className="text-2xl font-semibold tracking-tight">Account List</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Account List
+            </h1>
             <p className="text-sm text-muted-foreground">
               Global account master across all companies and departments.
             </p>
@@ -248,15 +264,11 @@ export default function AccountListPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-2 rounded-2xl border bg-background px-3 py-2">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by name, code, company, department, email, phone or TRN"
-            className="h-9 border-0 px-0 shadow-none focus-visible:ring-0"
-          />
-        </div>
+        <TableSearchBar
+          search={search}
+          onSearch={setSearch}
+          placeholder="Search by name, code, company, department, email, phone or TRN"
+        />
 
         {loading ? (
           <div className="flex h-48 items-center justify-center rounded-2xl border bg-background text-sm text-muted-foreground">

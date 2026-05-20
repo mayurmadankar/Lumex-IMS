@@ -1,16 +1,17 @@
 "use client";
 
-import { FileMinus, FilePlus, Loader2, Search } from "lucide-react";
+import { FileMinus, FilePlus, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { getMemoOuts } from "@/api/services/memo-out.service";
 import type { MemoOutListItem } from "@/api/services/memo-out.service";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import Pagination from "@/components/ui/pagination";
+import { TableSearchBar } from "@/components/ui/table-search-bar";
 import { useCompanyAccess } from "@/hooks/use-company-access";
 import { usePagination } from "@/hooks/use-pagination";
+import { matchesTableSearch } from "@/lib/table-search";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-IN", {
@@ -36,7 +37,9 @@ function StatusPill({ status }: { status: MemoOutListItem["status"] }) {
   };
 
   return (
-    <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${styles[status]}`}>
+    <span
+      className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${styles[status]}`}
+    >
       {status}
     </span>
   );
@@ -72,9 +75,11 @@ function lotId(memoOut: MemoOutListItem) {
 
 function sourceDoc(memoOut: MemoOutListItem) {
   const item = memoOut.inventoryItem;
-  const document = item?.purchase ?? item?.purchaseNote ?? item?.memo ?? item?.originMemo;
+  const document =
+    item?.purchase ?? item?.purchaseNote ?? item?.memo ?? item?.originMemo;
   if (!document) return "-";
-  if ("purchaseNo" in document) return `${document.purchaseNo} (${document.docType})`;
+  if ("purchaseNo" in document)
+    return `${document.purchaseNo} (${document.docType})`;
   return `${document.memoNo} (${document.docType})`;
 }
 
@@ -88,7 +93,10 @@ export default function MemoOutListPage() {
 
   const canReadMemoOuts = hasCompanyPermission("MEMO_OUT_LIST", "READ_ONLY");
   const canCreateMemoOut = hasCompanyPermission("NEW_MEMO_OUT", "READ_WRITE");
-  const canReturnMemoOut = hasCompanyPermission("NEW_MEMO_OUT_RETURN", "READ_WRITE");
+  const canReturnMemoOut = hasCompanyPermission(
+    "NEW_MEMO_OUT_RETURN",
+    "READ_WRITE",
+  );
 
   useEffect(() => {
     if (!canReadMemoOuts || !currentCompany?.id) {
@@ -115,40 +123,39 @@ export default function MemoOutListPage() {
   }, [canReadMemoOuts, currentCompany?.id]);
 
   const filteredMemoOuts = useMemo(() => {
-    const value = search.trim().toLowerCase();
+    const value = search.trim();
     if (!value) return memoOuts;
 
     return memoOuts.filter((memoOut) =>
-      [
-        memoOut.company.name,
-        memoOut.company.code,
-        memoOut.department.name,
-        memoOut.createdBy?.fullName,
-        memoOut.createdBy?.email,
-        memoOut.memoNo,
-        memoOut.docId,
-        memoOut.docType,
-        memoOut.referenceDocNo,
-        memoOut.account?.accountName,
-        memoOut.account?.accountIndex,
-        memoOut.account?.accountType?.name,
-        memoOut.inventoryItem?.itemId,
-        memoOut.inventoryItem?.lotId,
-        memoOut.inventoryItem?.lotName,
-        memoOut.inventoryItem?.certificateNo,
-        memoOut.inventoryItem?.itemMaster?.itemName,
-        memoOut.inventoryItem?.status,
-        memoOut.sourceMemoOut?.memoNo,
-        memoOut.status,
-      ]
-        .filter(Boolean)
-        .some((item) => String(item).toLowerCase().includes(value)),
+      matchesTableSearch(
+        [
+          memoOut.company.name,
+          memoOut.company.code,
+          memoOut.department.name,
+          memoOut.createdBy?.fullName,
+          memoOut.createdBy?.email,
+          memoOut.memoNo,
+          memoOut.docId,
+          memoOut.docType,
+          memoOut.referenceDocNo,
+          memoOut.account?.accountName,
+          memoOut.account?.accountIndex,
+          memoOut.account?.accountType?.name,
+          memoOut.inventoryItem?.itemId,
+          memoOut.inventoryItem?.lotId,
+          memoOut.inventoryItem?.lotName,
+          memoOut.inventoryItem?.certificateNo,
+          memoOut.inventoryItem?.itemMaster?.itemName,
+          memoOut.inventoryItem?.status,
+          memoOut.sourceMemoOut?.memoNo,
+          memoOut.status,
+        ],
+        value,
+      ),
     );
   }, [memoOuts, search]);
-  const {
-    paginatedItems: paginatedMemoOuts,
-    ...memoOutPagination
-  } = usePagination(filteredMemoOuts);
+  const { paginatedItems: paginatedMemoOuts, ...memoOutPagination } =
+    usePagination(filteredMemoOuts);
 
   if (!canReadMemoOuts) {
     return (
@@ -162,13 +169,15 @@ export default function MemoOutListPage() {
 
   return (
     <div className="min-h-screen bg-muted/30 p-6">
-      <div className="mx-auto max-w-[1500px] space-y-5">
+      <div className="mx-auto w-full max-w-none space-y-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
               Memo Out
             </p>
-            <h1 className="text-2xl font-semibold tracking-tight">Memo Out List</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Memo Out List
+            </h1>
             <p className="text-sm text-muted-foreground">
               {filteredMemoOuts.length} memo out records found
             </p>
@@ -179,7 +188,9 @@ export default function MemoOutListPage() {
               <Button
                 variant="outline"
                 className="h-9 rounded-xl"
-                onClick={() => router.push("/user/memo-out/new-memo-out-return")}
+                onClick={() =>
+                  router.push("/user/memo-out/new-memo-out-return")
+                }
               >
                 <FileMinus className="h-4 w-4" />
                 New Memo Out Return
@@ -198,15 +209,11 @@ export default function MemoOutListPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 rounded-2xl border bg-background px-3 py-2">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search Memo Out documents"
-            className="h-9 border-0 px-0 shadow-none focus-visible:ring-0"
-          />
-        </div>
+        <TableSearchBar
+          search={search}
+          onSearch={setSearch}
+          placeholder="Search Memo Out documents"
+        />
 
         {loading ? (
           <div className="flex h-48 items-center justify-center rounded-2xl border bg-background text-sm text-muted-foreground">
@@ -241,7 +248,9 @@ export default function MemoOutListPage() {
                     <th className="px-3 py-3 font-medium">Certificate No</th>
                     <th className="px-3 py-3 text-right font-medium">Qty</th>
                     <th className="px-3 py-3 text-right font-medium">Weight</th>
-                    <th className="px-3 py-3 text-right font-medium">Total Amount</th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      Total Amount
+                    </th>
                     <th className="px-3 py-3 font-medium">Item Status</th>
                     <th className="px-3 py-3 font-medium">Source Document</th>
                     <th className="px-3 py-3 font-medium">Returned Against</th>
@@ -256,7 +265,9 @@ export default function MemoOutListPage() {
                       <td className="px-3 py-3">{memoOut.company.name}</td>
                       <td className="px-3 py-3">{memoOut.department.name}</td>
                       <td className="px-3 py-3">
-                        {memoOut.createdBy?.fullName ?? memoOut.createdBy?.email ?? "-"}
+                        {memoOut.createdBy?.fullName ??
+                          memoOut.createdBy?.email ??
+                          "-"}
                       </td>
                       <td className="px-3 py-3">
                         <DocTypePill type={memoOut.docType} />
@@ -267,24 +278,42 @@ export default function MemoOutListPage() {
                       <td className="px-3 py-3 font-medium text-blue-600">
                         {memoOut.docId}
                       </td>
-                      <td className="px-3 py-3">{memoOut.account?.accountName ?? "-"}</td>
-                      <td className="px-3 py-3">{memoOut.account?.accountType?.name ?? "-"}</td>
+                      <td className="px-3 py-3">
+                        {memoOut.account?.accountName ?? "-"}
+                      </td>
+                      <td className="px-3 py-3">
+                        {memoOut.account?.accountType?.name ?? "-"}
+                      </td>
                       <td className="px-3 py-3 font-medium text-blue-600">
                         {memoOut.account?.accountIndex ?? "-"}
                       </td>
-                      <td className="px-3 py-3 font-medium text-blue-600">{lotId(memoOut)}</td>
+                      <td className="px-3 py-3 font-medium text-blue-600">
+                        {lotId(memoOut)}
+                      </td>
                       <td className="px-3 py-3">{itemName(memoOut)}</td>
-                      <td className="px-3 py-3">{memoOut.inventoryItem?.certificateNo ?? "-"}</td>
+                      <td className="px-3 py-3">
+                        {memoOut.inventoryItem?.certificateNo ?? "-"}
+                      </td>
                       <td className="px-3 py-3 text-right">{memoOut.docQty}</td>
-                      <td className="px-3 py-3 text-right">{formatNumber(memoOut.docWeight, 4)}</td>
+                      <td className="px-3 py-3 text-right">
+                        {formatNumber(memoOut.docWeight, 4)}
+                      </td>
                       <td className="px-3 py-3 text-right font-semibold text-emerald-600">
                         {formatNumber(memoOut.docGrandTotalPrice)}
                       </td>
-                      <td className="px-3 py-3">{memoOut.inventoryItem?.status ?? "-"}</td>
+                      <td className="px-3 py-3">
+                        {memoOut.inventoryItem?.status ?? "-"}
+                      </td>
                       <td className="px-3 py-3">{sourceDoc(memoOut)}</td>
-                      <td className="px-3 py-3">{memoOut.sourceMemoOut?.memoNo ?? "-"}</td>
-                      <td className="px-3 py-3">{memoOut.referenceDocNo ?? "-"}</td>
-                      <td className="px-3 py-3">{formatDate(memoOut.createdAt)}</td>
+                      <td className="px-3 py-3">
+                        {memoOut.sourceMemoOut?.memoNo ?? "-"}
+                      </td>
+                      <td className="px-3 py-3">
+                        {memoOut.referenceDocNo ?? "-"}
+                      </td>
+                      <td className="px-3 py-3">
+                        {formatDate(memoOut.createdAt)}
+                      </td>
                       <td className="px-3 py-3">
                         <StatusPill status={memoOut.status} />
                       </td>

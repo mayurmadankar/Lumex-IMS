@@ -1,6 +1,16 @@
 "use client";
 
-import { Building2, Mail, Globe, Hash, Loader2, Users, LayoutGrid, Plus, X } from "lucide-react";
+import {
+  Building2,
+  Mail,
+  Globe,
+  Hash,
+  Loader2,
+  Users,
+  LayoutGrid,
+  Plus,
+  X,
+} from "lucide-react";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -12,8 +22,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Pagination from "@/components/ui/pagination";
+import { TableSearchBar } from "@/components/ui/table-search-bar";
 import { useCountries } from "@/hooks/useCountries";
 import { usePagination } from "@/hooks/use-pagination";
+import { matchesTableSearch } from "@/lib/table-search";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Department = {
@@ -59,7 +71,9 @@ type CountryLookup = {
 
 function getCountryLabel(countries: CountryLookup[], value?: string) {
   if (!value) return "";
-  const country = countries.find((item) => item.iso2 === value || item.name === value);
+  const country = countries.find(
+    (item) => item.iso2 === value || item.name === value,
+  );
   return country ? `${country.name} (${country.iso2})` : value;
 }
 
@@ -153,7 +167,9 @@ function AddDepartmentModal({
           });
         });
       } else {
-        toast.error(apiError?.response?.data?.message ?? "Failed to create department");
+        toast.error(
+          apiError?.response?.data?.message ?? "Failed to create department",
+        );
       }
     }
   };
@@ -162,9 +178,11 @@ function AddDepartmentModal({
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={handleClose} />
+      <div
+        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+        onClick={handleClose}
+      />
       <div className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-background shadow-2xl">
-
         {/* Header */}
         <div className="flex items-center justify-between border-b px-6 py-4">
           <div className="flex items-center gap-3">
@@ -173,10 +191,15 @@ function AddDepartmentModal({
             </div>
             <div>
               <p className="text-sm font-semibold">Add Department</p>
-              <p className="text-xs text-muted-foreground">Fill in the details below</p>
+              <p className="text-xs text-muted-foreground">
+                Fill in the details below
+              </p>
             </div>
           </div>
-          <button onClick={handleClose} className="rounded-lg p-1.5 hover:bg-muted transition">
+          <button
+            onClick={handleClose}
+            className="rounded-lg p-1.5 hover:bg-muted transition"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -184,14 +207,20 @@ function AddDepartmentModal({
         {/* Form */}
         <form onSubmit={handleSubmit(onFormSubmit)}>
           <div className="space-y-4 px-6 py-6">
-
-            <Field label="Department Name" required error={errors.name?.message}>
+            <Field
+              label="Department Name"
+              required
+              error={errors.name?.message}
+            >
               <Input
                 placeholder="e.g. Finance"
                 className="rounded-xl"
                 {...register("name", {
                   required: "Department name is required",
-                  minLength: { value: 2, message: "Must be at least 2 characters" },
+                  minLength: {
+                    value: 2,
+                    message: "Must be at least 2 characters",
+                  },
                 })}
               />
             </Field>
@@ -202,7 +231,9 @@ function AddDepartmentModal({
                 {...register("country", { required: "Country is required" })}
               >
                 <option value="">
-                  {countriesLoading ? "Loading countries..." : "Choose a country..."}
+                  {countriesLoading
+                    ? "Loading countries..."
+                    : "Choose a country..."}
                 </option>
                 {countries.map((country) => (
                   <option key={country.id} value={country.iso2}>
@@ -219,19 +250,34 @@ function AddDepartmentModal({
                 {...register("description")}
               />
             </Field>
-
           </div>
 
           {/* Footer */}
           <div className="flex items-center justify-end gap-3 border-t px-6 py-4">
-            <Button type="button" variant="outline" className="rounded-xl" onClick={handleClose} disabled={isSubmitting}>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-xl"
+              onClick={handleClose}
+              disabled={isSubmitting}
+            >
               Cancel
             </Button>
-            <Button type="submit" className="rounded-xl" disabled={isSubmitting}>
+            <Button
+              type="submit"
+              className="rounded-xl"
+              disabled={isSubmitting}
+            >
               {isSubmitting ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating...</>
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
               ) : (
-                <><Plus className="mr-2 h-4 w-4" />Create Department</>
+                <>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Department
+                </>
               )}
             </Button>
           </div>
@@ -246,10 +292,11 @@ export default function CompanyDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const { countries } = useCountries();
 
-  const [company, setCompany]     = useState<Company | null>(null);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState<string | null>(null);
+  const [company, setCompany] = useState<Company | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [departmentSearch, setDepartmentSearch] = useState("");
 
   useEffect(() => {
     const fetchCompany = async () => {
@@ -271,17 +318,38 @@ export default function CompanyDetailsPage() {
       prev
         ? {
             ...prev,
-            departments: [...prev.departments, { ...dept, _count: { userAccesses: 0 } }],
+            departments: [
+              ...prev.departments,
+              { ...dept, _count: { userAccesses: 0 } },
+            ],
             _count: { departments: prev._count?.departments + 1 },
           }
-        : prev
+        : prev,
     );
   };
-  const departments = useMemo(() => company?.departments ?? [], [company?.departments]);
-  const {
-    paginatedItems: paginatedDepartments,
-    ...departmentPagination
-  } = usePagination(departments);
+  const departments = useMemo(
+    () => company?.departments ?? [],
+    [company?.departments],
+  );
+  const filteredDepartments = useMemo(() => {
+    const value = departmentSearch.trim();
+    if (!value) return departments;
+
+    return departments.filter((department) =>
+      matchesTableSearch(
+        [
+          department.name,
+          getCountryLabel(countries, department.country),
+          department.description,
+          department._count?.userAccesses,
+          department.isActive ? "Active" : "Inactive",
+        ],
+        value,
+      ),
+    );
+  }, [countries, departmentSearch, departments]);
+  const { paginatedItems: paginatedDepartments, ...departmentPagination } =
+    usePagination(filteredDepartments);
 
   if (loading) {
     return (
@@ -303,18 +371,21 @@ export default function CompanyDetailsPage() {
   return (
     <>
       <div className="space-y-6 p-5">
-
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">{company.name}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {company.name}
+            </h1>
             <p className="text-sm text-muted-foreground">Company Details</p>
           </div>
-          <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
-            company.status === "ACTIVE"
-              ? "bg-green-100 text-green-700"
-              : "bg-muted text-muted-foreground"
-          }`}>
+          <span
+            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+              company.status === "ACTIVE"
+                ? "bg-green-100 text-green-700"
+                : "bg-muted text-muted-foreground"
+            }`}
+          >
             {company.status === "ACTIVE" ? "Active" : "Inactive"}
           </span>
         </div>
@@ -326,10 +397,26 @@ export default function CompanyDetailsPage() {
               <CardTitle className="text-base">Company Information</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <InfoItem icon={Building2} label="Company Name" value={company.name} />
-              <InfoItem icon={Hash}      label="Company Code" value={company.code ?? "—"} />
-              <InfoItem icon={Mail}      label="Email"        value={company.companyEmail} />
-              <InfoItem icon={Globe}     label="Country"      value={getCountryLabel(countries, company.country)} />
+              <InfoItem
+                icon={Building2}
+                label="Company Name"
+                value={company.name}
+              />
+              <InfoItem
+                icon={Hash}
+                label="Company Code"
+                value={company.code ?? "—"}
+              />
+              <InfoItem
+                icon={Mail}
+                label="Email"
+                value={company.companyEmail}
+              />
+              <InfoItem
+                icon={Globe}
+                label="Country"
+                value={getCountryLabel(countries, company.country)}
+              />
             </CardContent>
           </Card>
 
@@ -343,7 +430,9 @@ export default function CompanyDetailsPage() {
                   <LayoutGrid className="h-4 w-4" />
                   <span className="text-xs">Departments</span>
                 </div>
-                <p className="mt-2 text-3xl font-semibold">{company?._count?.departments}</p>
+                <p className="mt-2 text-3xl font-semibold">
+                  {company?._count?.departments}
+                </p>
               </div>
               <div className="rounded-xl border bg-muted/20 p-4">
                 <div className="flex items-center gap-2 text-muted-foreground">
@@ -351,7 +440,10 @@ export default function CompanyDetailsPage() {
                   <span className="text-xs">Total Users</span>
                 </div>
                 <p className="mt-2 text-3xl font-semibold">
-                  {company.departments.reduce((sum, d) => sum + d._count?.userAccesses, 0)}
+                  {company.departments.reduce(
+                    (sum, d) => sum + d._count?.userAccesses,
+                    0,
+                  )}
                 </p>
               </div>
             </CardContent>
@@ -367,53 +459,77 @@ export default function CompanyDetailsPage() {
               Add Department
             </Button>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             {company.departments.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 No departments yet. Add one to get started.
               </p>
             ) : (
               <>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-125 text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-muted-foreground">
-                      <th className="py-3 font-medium">Name</th>
-                      <th className="py-3 font-medium">Country</th>
-                      <th className="py-3 font-medium">Description</th>
-                      <th className="py-3 font-medium">Users</th>
-                      <th className="py-3 font-medium">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedDepartments.map((dept) => (
-                      <tr key={dept.id} className="border-b last:border-0">
-                        <td className="py-4 font-medium">{dept.name}</td>
-                        <td className="py-4 text-muted-foreground">{getCountryLabel(countries, dept.country)}</td>
-                        <td className="py-4 text-muted-foreground">{dept.description ?? "—"}</td>
-                        <td className="py-4">{dept._count?.userAccesses}</td>
-                        <td className="py-4">
-                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            dept.isActive
-                              ? "bg-green-100 text-green-700"
-                              : "bg-muted text-muted-foreground"
-                          }`}>
-                            {dept.isActive ? "Active" : "Inactive"}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  </table>
-                </div>
-                <Pagination
-                  page={departmentPagination.page}
-                  totalPages={departmentPagination.totalPages}
-                  start={departmentPagination.start}
-                  end={departmentPagination.end}
-                  total={departmentPagination.total}
-                  onPageChange={departmentPagination.setPage}
+                <TableSearchBar
+                  search={departmentSearch}
+                  onSearch={setDepartmentSearch}
+                  placeholder="Search departments"
                 />
+                {filteredDepartments.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">
+                    No departments found.
+                  </p>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-125 text-sm">
+                        <thead>
+                          <tr className="border-b text-left text-muted-foreground">
+                            <th className="py-3 font-medium">Name</th>
+                            <th className="py-3 font-medium">Country</th>
+                            <th className="py-3 font-medium">Description</th>
+                            <th className="py-3 font-medium">Users</th>
+                            <th className="py-3 font-medium">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {paginatedDepartments.map((dept) => (
+                            <tr
+                              key={dept.id}
+                              className="border-b last:border-0"
+                            >
+                              <td className="py-4 font-medium">{dept.name}</td>
+                              <td className="py-4 text-muted-foreground">
+                                {getCountryLabel(countries, dept.country)}
+                              </td>
+                              <td className="py-4 text-muted-foreground">
+                                {dept.description ?? "—"}
+                              </td>
+                              <td className="py-4">
+                                {dept._count?.userAccesses}
+                              </td>
+                              <td className="py-4">
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                    dept.isActive
+                                      ? "bg-green-100 text-green-700"
+                                      : "bg-muted text-muted-foreground"
+                                  }`}
+                                >
+                                  {dept.isActive ? "Active" : "Inactive"}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <Pagination
+                      page={departmentPagination.page}
+                      totalPages={departmentPagination.totalPages}
+                      start={departmentPagination.start}
+                      end={departmentPagination.end}
+                      total={departmentPagination.total}
+                      onPageChange={departmentPagination.setPage}
+                    />
+                  </>
+                )}
               </>
             )}
           </CardContent>

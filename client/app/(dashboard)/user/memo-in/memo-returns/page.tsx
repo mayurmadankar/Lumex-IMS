@@ -1,16 +1,17 @@
 "use client";
 
-import { Loader2, RotateCcw, Search } from "lucide-react";
+import { Loader2, RotateCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { getMemos } from "@/api/services/memo.service";
 import type { MemoListItem } from "@/api/services/memo.service";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import Pagination from "@/components/ui/pagination";
+import { TableSearchBar } from "@/components/ui/table-search-bar";
 import { useCompanyAccess } from "@/hooks/use-company-access";
 import { usePagination } from "@/hooks/use-pagination";
+import { matchesTableSearch } from "@/lib/table-search";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-IN", {
@@ -85,28 +86,29 @@ export default function MemoReturnListPage() {
   }, [canReadMemoReturns, currentCompany?.id]);
 
   const filteredMemoReturns = useMemo(() => {
-    const value = search.trim().toLowerCase();
+    const value = search.trim();
     if (!value) return memoReturns;
 
     return memoReturns.filter((memo) =>
-      [
-        memo.company.name,
-        memo.company.code,
-        memo.department.name,
-        memo.createdBy?.fullName,
-        memo.createdBy?.email,
-        memo.docType,
-        memo.docId,
-        memo.memoNo,
-        memo.referenceDocNo,
-        memo.account.accountName,
-        memo.account.accountIndex,
-        memo.currency,
-        memo.status,
-      ]
-        .filter(Boolean)
-        .some((item) => String(item).toLowerCase().includes(value)),
-      );
+      matchesTableSearch(
+        [
+          memo.company.name,
+          memo.company.code,
+          memo.department.name,
+          memo.createdBy?.fullName,
+          memo.createdBy?.email,
+          memo.docType,
+          memo.docId,
+          memo.memoNo,
+          memo.referenceDocNo,
+          memo.account.accountName,
+          memo.account.accountIndex,
+          memo.currency,
+          memo.status,
+        ],
+        value,
+      ),
+    );
   }, [memoReturns, search]);
   const { paginatedItems: paginatedMemoReturns, ...memoReturnPagination } =
     usePagination(filteredMemoReturns);
@@ -123,7 +125,7 @@ export default function MemoReturnListPage() {
 
   return (
     <div className="min-h-screen bg-muted/30 p-6">
-      <div className="mx-auto max-w-[1500px] space-y-5">
+      <div className="mx-auto w-full max-w-none space-y-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
@@ -148,15 +150,11 @@ export default function MemoReturnListPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-2 rounded-2xl border bg-background px-3 py-2">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search memo returns"
-            className="h-9 border-0 px-0 shadow-none focus-visible:ring-0"
-          />
-        </div>
+        <TableSearchBar
+          search={search}
+          onSearch={setSearch}
+          placeholder="Search memo returns"
+        />
 
         {loading ? (
           <div className="flex h-48 items-center justify-center rounded-2xl border bg-background text-sm text-muted-foreground">
@@ -186,9 +184,15 @@ export default function MemoReturnListPage() {
                     <th className="px-3 py-3 font-medium">Return No</th>
                     <th className="px-3 py-3 font-medium">Vendor</th>
                     <th className="px-3 py-3 font-medium">Reference Doc No</th>
-                    <th className="px-3 py-3 text-right font-medium">Doc Qty</th>
-                    <th className="px-3 py-3 text-right font-medium">Doc Weight</th>
-                    <th className="px-3 py-3 text-right font-medium">Return Total</th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      Doc Qty
+                    </th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      Doc Weight
+                    </th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      Return Total
+                    </th>
                     <th className="px-3 py-3 font-medium">Currency</th>
                     <th className="px-3 py-3 font-medium">Doc Status</th>
                   </tr>
@@ -199,7 +203,9 @@ export default function MemoReturnListPage() {
                       <td className="px-3 py-3">{memo.company.name}</td>
                       <td className="px-3 py-3">{memo.department.name}</td>
                       <td className="px-3 py-3">
-                        {memo.createdBy?.fullName ?? memo.createdBy?.email ?? "-"}
+                        {memo.createdBy?.fullName ??
+                          memo.createdBy?.email ??
+                          "-"}
                       </td>
                       <td className="px-3 py-3">{memo.docType}</td>
                       <td className="px-3 py-3">{formatDate(memo.openDate)}</td>
@@ -230,7 +236,9 @@ export default function MemoReturnListPage() {
                         </button>
                       </td>
                       <td className="px-3 py-3">{memo.account.accountName}</td>
-                      <td className="px-3 py-3">{memo.referenceDocNo ?? "-"}</td>
+                      <td className="px-3 py-3">
+                        {memo.referenceDocNo ?? "-"}
+                      </td>
                       <td className="px-3 py-3 text-right">{memo.docQty}</td>
                       <td className="px-3 py-3 text-right font-semibold">
                         {formatNumber(memo.docWeight, 4)}
