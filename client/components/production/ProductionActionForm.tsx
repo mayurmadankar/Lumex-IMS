@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/input";
 import { useCompanyAccess } from "@/hooks/use-company-access";
+import { useFormDraft } from "@/hooks/use-form-draft";
 
 type ProductionActionMode = "change-location" | "send-to-process";
 
@@ -68,6 +69,26 @@ function companyLabel(item?: InventoryItemListItem | null) {
     : item.company.name;
 }
 
+type ProductionActionDraft = {
+  lotId: string;
+  targetLocation: string;
+  docDate: string;
+  expectedReturnDate: string;
+  referenceDocNo: string;
+  notes: string;
+};
+
+function defaultProductionActionDraft(): ProductionActionDraft {
+  return {
+    lotId: "",
+    targetLocation: "",
+    docDate: todayInputValue(),
+    expectedReturnDate: "",
+    referenceDocNo: "",
+    notes: "",
+  };
+}
+
 export default function ProductionActionForm({
   mode,
 }: {
@@ -88,6 +109,35 @@ export default function ProductionActionForm({
   const [referenceDocNo, setReferenceDocNo] = useState("");
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const draftKey = currentCompany?.id
+    ? `ims:draft:production-${mode}:${currentCompany.id}`
+    : null;
+  const draftValues = useMemo<ProductionActionDraft>(
+    () => ({
+      lotId,
+      targetLocation,
+      docDate,
+      expectedReturnDate,
+      referenceDocNo,
+      notes,
+    }),
+    [
+      docDate,
+      expectedReturnDate,
+      lotId,
+      notes,
+      referenceDocNo,
+      targetLocation,
+    ],
+  );
+  const draftMetadata = useMemo(
+    () => ({
+      title: flow.title,
+      subtitle: lotId ? `Lot ${lotId}` : currentCompany?.name ?? "Production draft",
+      href: `/user/production/${mode}`,
+    }),
+    [currentCompany?.name, flow.title, lotId, mode],
+  );
 
   const targetIsSameAsCurrent = useMemo(
     () =>
@@ -96,6 +146,23 @@ export default function ProductionActionForm({
       targetLocation.trim() === inventoryItem?.locationAccountName,
     [inventoryItem?.locationAccountName, mode, targetLocation],
   );
+
+  useFormDraft<ProductionActionDraft>({
+    storageKey: draftKey,
+    values: draftValues,
+    metadata: draftMetadata,
+    getDefaultValues: defaultProductionActionDraft,
+    restore: (draft) => {
+      setLotId(draft.lotId ?? "");
+      setTargetLocation(draft.targetLocation ?? "");
+      setDocDate(draft.docDate ?? todayInputValue());
+      setExpectedReturnDate(draft.expectedReturnDate ?? "");
+      setReferenceDocNo(draft.referenceDocNo ?? "");
+      setNotes(draft.notes ?? "");
+      setInventoryItem(null);
+      setLookupError(null);
+    },
+  });
 
   useEffect(() => {
     const value = lotId.trim();

@@ -38,7 +38,7 @@ export type PurchaseMemoInventoryItemsPayload = {
   itemIds: string[];
   referenceDocNo?: string;
   paymentTerm?: number | null;
-  currency?: "USD";
+  currency?: string;
   docDate?: string;
   status?: "ACTIVE" | "CANCELLED";
   remark?: string;

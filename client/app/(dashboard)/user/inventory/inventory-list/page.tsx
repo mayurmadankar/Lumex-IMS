@@ -18,6 +18,7 @@ import type {
   InvoiceType,
 } from "@/api/services/invoice.service";
 import type { TransferListItem } from "@/api/services/transfer.service";
+import { AccountSearchPicker } from "@/components/common/account-search-picker";
 import TransferForm from "@/components/transfer/TransferForm";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/Field";
@@ -132,8 +133,6 @@ function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
 }
 
-const NO_CUSTOMER = "__NONE__";
-
 const invoiceTypeOptions: Array<{ value: InvoiceType; label: string }> = [
   { value: "LOCAL_INVOICE", label: "Local Invoice" },
   { value: "EXPORT_INVOICE", label: "Export Invoice" },
@@ -148,10 +147,6 @@ const invoiceStatusOptions: Array<{ value: InvoiceStatus; label: string }> = [
 function isCustomerAccount(account: AccountListItem) {
   const type = account.accountType.name.trim().toLowerCase();
   return type === "customer" || type === "group customer";
-}
-
-function accountLabel(account: AccountListItem) {
-  return `${account.accountName} (${account.accountIndex ?? "No docId"})`;
 }
 
 function departmentOptionLabel(access: DepartmentAccessOption) {
@@ -904,7 +899,7 @@ export default function InventoryListPage() {
                       Total Cost
                     </th>
                     <th className="px-2.5 py-3 font-medium">Date</th>
-                    <th className="px-2.5 py-3 font-medium">Doc Status</th>
+                    <th className="px-2.5 py-3 font-medium">Status</th>
                     <th className="px-2.5 py-3 font-medium">Payment Terms</th>
                     <th className="px-2.5 py-3 font-medium">Currency</th>
                     <th className="px-2.5 py-3 font-medium">Remark</th>
@@ -1269,27 +1264,16 @@ export default function InventoryListPage() {
                       </SelectContent>
                     </Select>
                   ) : (
-                    <Select
-                      value={invoiceAccountId || NO_CUSTOMER}
-                      onValueChange={(value) =>
-                        setInvoiceAccountId(value === NO_CUSTOMER ? "" : value)
-                      }
+                    <AccountSearchPicker
+                      value={invoiceAccountId}
+                      onChange={setInvoiceAccountId}
+                      options={customerAccounts}
                       disabled={customerAccounts.length === 0}
-                    >
-                      <SelectTrigger className="h-10 w-full rounded-xl">
-                        <SelectValue placeholder="Select customer" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NO_CUSTOMER}>
-                          Select customer
-                        </SelectItem>
-                        {customerAccounts.map((account) => (
-                          <SelectItem key={account.id} value={account.id}>
-                            {accountLabel(account)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      placeholder="Select customer"
+                      modalTitle="Search Customer"
+                      searchPlaceholder="Search customer by name, doc ID, phone, email, or tax ID"
+                      emptyMessage="No customer accounts found."
+                    />
                   )}
                 </Field>
                 <Field label="Doc Date">

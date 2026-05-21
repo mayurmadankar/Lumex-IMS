@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/input";
 import { useCompanyAccess } from "@/hooks/use-company-access";
+import { useFormDraft } from "@/hooks/use-form-draft";
 
 type ReturnFlow = "purchase" | "memo" | "invoice" | "transfer";
 type ReturnCandidate =
@@ -46,6 +47,7 @@ const flowConfig: Record<
     module: Parameters<ReturnType<typeof useCompanyAccess>["hasCompanyPermission"]>[0];
     denied: string;
     successLabel: string;
+    draftHref: string;
     redirectTo: string;
   }
 > = {
@@ -55,6 +57,7 @@ const flowConfig: Record<
     module: "NEW_PURCH_NOTE_RTN",
     denied: "You do not have permission to create purchase returns in this company.",
     successLabel: "Purchase return created",
+    draftHref: "/user/purchase/new-purchase-return",
     redirectTo: "/user/purchase/purchase-returns",
   },
   memo: {
@@ -63,6 +66,7 @@ const flowConfig: Record<
     module: "MEMO_IN_RETURN",
     denied: "You do not have permission to create memo returns in this company.",
     successLabel: "Memo return created",
+    draftHref: "/user/memo-in/new-memo-return",
     redirectTo: "/user/memo-in/memo-returns",
   },
   invoice: {
@@ -71,6 +75,7 @@ const flowConfig: Record<
     module: "NEW_INVOICE_RETURN",
     denied: "You do not have permission to create invoice returns in this company.",
     successLabel: "Invoice return created",
+    draftHref: "/user/invoice/new-invoice-return",
     redirectTo: "/user/invoice/invoices",
   },
   transfer: {
@@ -79,6 +84,7 @@ const flowConfig: Record<
     module: "NEW_TRANSFER_RETURN",
     denied: "You do not have permission to create transfer returns in this company.",
     successLabel: "Transfer return created",
+    draftHref: "/user/transfer/new-transfer-return",
     redirectTo: "/user/transfer/transfers",
   },
 };
@@ -154,6 +160,22 @@ function invoiceAccount(candidate: ReturnCandidate | null) {
   return invoice?.account?.accountName ?? invoice?.sourceCompany?.name ?? "-";
 }
 
+type LotReturnDraft = {
+  lotId: string;
+  docDate: string;
+  referenceDocNo: string;
+  notes: string;
+};
+
+function defaultLotReturnDraft(): LotReturnDraft {
+  return {
+    lotId: "",
+    docDate: todayInputValue(),
+    referenceDocNo: "",
+    notes: "",
+  };
+}
+
 export default function LotReturnForm({ flow }: { flow: ReturnFlow }) {
   const router = useRouter();
   const { currentCompany, hasCompanyPermission } = useCompanyAccess();
@@ -170,6 +192,40 @@ export default function LotReturnForm({ flow }: { flow: ReturnFlow }) {
 
   const item = useMemo(() => candidateItem(flow, candidate), [candidate, flow]);
   const destination = returnDestination(flow, candidate);
+  const draftKey = currentCompany?.id
+    ? `ims:draft:${flow}-return:${currentCompany.id}`
+    : null;
+  const draftValues = useMemo<LotReturnDraft>(
+    () => ({
+      lotId,
+      docDate,
+      referenceDocNo,
+      notes,
+    }),
+    [docDate, lotId, notes, referenceDocNo],
+  );
+  const draftMetadata = useMemo(
+    () => ({
+      title: config.title,
+      subtitle: lotId ? `Lot ${lotId}` : currentCompany?.name ?? config.eyebrow,
+      href: config.draftHref,
+    }),
+    [config.draftHref, config.eyebrow, config.title, currentCompany?.name, lotId],
+  );
+  useFormDraft<LotReturnDraft>({
+    storageKey: draftKey,
+    values: draftValues,
+    metadata: draftMetadata,
+    getDefaultValues: defaultLotReturnDraft,
+    restore: (draft) => {
+      setLotId(draft.lotId ?? "");
+      setDocDate(draft.docDate ?? todayInputValue());
+      setReferenceDocNo(draft.referenceDocNo ?? "");
+      setNotes(draft.notes ?? "");
+      setCandidate(null);
+      setLookupError(null);
+    },
+  });
 
   useEffect(() => {
     const value = lotId.trim();

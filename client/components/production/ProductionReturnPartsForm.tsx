@@ -2,7 +2,7 @@
 
 import { ArrowLeft, Loader2, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
 import type { InventoryItemListItem } from "@/api/services/inventory.service";
@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useCompanyAccess } from "@/hooks/use-company-access";
+import { useFormDraft } from "@/hooks/use-form-draft";
 
 type PartRow = ReturnProductionPartPayload & {
   rowId: string;
@@ -80,6 +81,28 @@ function sourceDocumentLabel(document?: ProductionDocument | null) {
   return `${document.productionNo} (${document.docType})`;
 }
 
+type ProductionReturnPartsDraft = {
+  lotId: string;
+  docDate: string;
+  referenceDocNo: string;
+  returnLocationAccountName: string;
+  lossWeight: string;
+  notes: string;
+  parts: PartRow[];
+};
+
+function defaultProductionReturnPartsDraft(): ProductionReturnPartsDraft {
+  return {
+    lotId: "",
+    docDate: todayInputValue(),
+    referenceDocNo: "",
+    returnLocationAccountName: "",
+    lossWeight: "0",
+    notes: "",
+    parts: [],
+  };
+}
+
 export default function ProductionReturnPartsForm() {
   const router = useRouter();
   const { currentCompany, hasCompanyPermission } = useCompanyAccess();
@@ -95,9 +118,45 @@ export default function ProductionReturnPartsForm() {
   const [notes, setNotes] = useState("");
   const [parts, setParts] = useState<PartRow[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const pendingPartsRestoreRef = useRef<{
+    lotId: string;
+    parts: PartRow[];
+    returnLocationAccountName: string;
+  } | null>(null);
 
   const item = candidate?.inventoryItem ?? null;
   const sourceProduction = candidate?.sourceProduction ?? null;
+  const draftKey = currentCompany?.id
+    ? `ims:draft:production-return-parts:${currentCompany.id}`
+    : null;
+  const draftValues = useMemo<ProductionReturnPartsDraft>(
+    () => ({
+      lotId,
+      docDate,
+      referenceDocNo,
+      returnLocationAccountName,
+      lossWeight: String(lossWeight),
+      notes,
+      parts,
+    }),
+    [
+      docDate,
+      lossWeight,
+      lotId,
+      notes,
+      parts,
+      referenceDocNo,
+      returnLocationAccountName,
+    ],
+  );
+  const draftMetadata = useMemo(
+    () => ({
+      title: "Return Parts",
+      subtitle: lotId ? `Lot ${lotId}` : currentCompany?.name ?? "Production draft",
+      href: "/user/production/return-parts",
+    }),
+    [currentCompany?.name, lotId],
+  );
 
   const totals = useMemo(
     () =>
@@ -115,12 +174,57 @@ export default function ProductionReturnPartsForm() {
   const totalWithLoss = totals.weight + Number(lossWeight || 0);
   const overweight = Boolean(item && totalWithLoss > item.weight + 0.0001);
 
+  useFormDraft<ProductionReturnPartsDraft>({
+    storageKey: draftKey,
+    values: draftValues,
+    metadata: draftMetadata,
+    getDefaultValues: defaultProductionReturnPartsDraft,
+    restore: (draft) => {
+      const restoredParts = Array.isArray(draft.parts)
+        ? draft.parts.map((part) => ({
+            ...part,
+            rowId: part.rowId || crypto.randomUUID(),
+          }))
+        : [];
+      const restoredLotId = draft.lotId ?? "";
+
+      pendingPartsRestoreRef.current = restoredLotId
+        ? {
+            lotId: restoredLotId,
+            parts: restoredParts,
+            returnLocationAccountName: draft.returnLocationAccountName ?? "",
+          }
+        : null;
+      setLotId(restoredLotId);
+      setDocDate(draft.docDate ?? todayInputValue());
+      setReferenceDocNo(draft.referenceDocNo ?? "");
+      setReturnLocationAccountName(draft.returnLocationAccountName ?? "");
+      setLossWeight(draft.lossWeight ?? "0");
+      setNotes(draft.notes ?? "");
+      setParts(restoredParts);
+      setCandidate(null);
+      setLookupError(null);
+    },
+  });
+
   useEffect(() => {
     const value = lotId.trim();
+    const pendingRestore = pendingPartsRestoreRef.current;
+    const preservingRestore = Boolean(
+      pendingRestore && pendingRestore.lotId === value,
+    );
+
+    if (pendingRestore && pendingRestore.lotId !== value) {
+      pendingPartsRestoreRef.current = null;
+    }
+
     setCandidate(null);
     setLookupError(null);
-    setParts([]);
-    setReturnLocationAccountName("");
+
+    if (!preservingRestore) {
+      setParts([]);
+      setReturnLocationAccountName("");
+    }
 
     if (!value) return;
 
@@ -137,9 +241,27 @@ export default function ProductionReturnPartsForm() {
           companyId: currentCompany.id,
         });
         const loaded = response.data.productionReturnItem as ProductionReturnItem;
+        const pending = pendingPartsRestoreRef.current;
+
         setCandidate(loaded);
-        setReturnLocationAccountName(loaded.inventoryItem.department?.name ?? "");
-        setParts([createPartFromItem(loaded.inventoryItem, 1)]);
+        if (pending && pending.lotId === value) {
+          setReturnLocationAccountName(
+            pending.returnLocationAccountName ||
+              loaded.inventoryItem.department?.name ||
+              "",
+          );
+          setParts(
+            pending.parts.length > 0
+              ? pending.parts
+              : [createPartFromItem(loaded.inventoryItem, 1)],
+          );
+          pendingPartsRestoreRef.current = null;
+        } else {
+          setReturnLocationAccountName(
+            loaded.inventoryItem.department?.name ?? "",
+          );
+          setParts([createPartFromItem(loaded.inventoryItem, 1)]);
+        }
       } catch (error: unknown) {
         const apiError = error as { response?: { data?: { message?: string } } };
         setLookupError(
@@ -207,7 +329,19 @@ export default function ProductionReturnPartsForm() {
         referenceDocNo: referenceDocNo.trim() || undefined,
         notes: notes.trim() || undefined,
         lossWeight,
-        parts: parts.map(({ rowId, ...part }) => part),
+        parts: parts.map((part) => ({
+          lotName: part.lotName,
+          quantity: part.quantity,
+          weight: part.weight,
+          totalCost: part.totalCost,
+          labAccountName: part.labAccountName,
+          certificateNo: part.certificateNo,
+          parcelOrStone: part.parcelOrStone,
+          shape: part.shape,
+          color: part.color,
+          clarity: part.clarity,
+          remark: part.remark,
+        })),
       });
 
       toast.success(

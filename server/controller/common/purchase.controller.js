@@ -712,7 +712,10 @@ export const returnInventoryItems = async (req, res) => {
   ];
   const referenceDocNo =
     data.referenceDocNo ??
-    (purchaseNos.length > 0 ? `Purchase Return: ${purchaseNos.join(", ")}` : null);
+    (purchaseNos.length > 0 ? purchaseNos.join(", ") : null);
+  const returnCurrency =
+    inventoryItems.find((item) => item.purchaseNote?.currency)?.purchaseNote?.currency ??
+    "USD";
 
   try {
     const purchaseReturn = await prisma.$transaction(async (tx) => {
@@ -739,7 +742,7 @@ export const returnInventoryItems = async (req, res) => {
           mainGrandTotalPrice: totals.totalCost,
           balanceAmount: 0,
           paymentTerm: null,
-          currency: "USD",
+          currency: returnCurrency,
           status: "ACTIVE",
           companyId: department.companyId,
           departmentId: department.id,

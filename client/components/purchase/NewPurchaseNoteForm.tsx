@@ -18,6 +18,7 @@ import type { AccountListItem } from "@/api/services/account.service";
 import { getItems } from "@/api/services/item.service";
 import type { ItemListItem } from "@/api/services/item.service";
 import { createPurchaseNote } from "@/api/services/purchase.service";
+import { AccountSearchPicker } from "@/components/common/account-search-picker";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  CURRENCY_OPTIONS,
+  DEFAULT_CURRENCY,
+  type CurrencyCode,
+} from "@/config/currencies";
+import { useFormDraft } from "@/hooks/use-form-draft";
 import { DEFAULT_PAGE_SIZE, usePagination } from "@/hooks/use-pagination";
 import { useAppSelector } from "@/store/hooks";
 import type { CompanyOption } from "@/store/types/types";
@@ -83,6 +90,59 @@ const purchaseFromLabels = purchaseFromOptions.reduce<Record<PurchaseFrom, strin
   },
 );
 
+type PurchaseNoteDraft = {
+  selectedAccountId: string;
+  purchaseFrom: PurchaseFrom;
+  paymentTerm: string;
+  currency: CurrencyCode;
+  docDate: string;
+  status: PurchaseStatus;
+  localPurchaseItems: LocalPurchaseItem[];
+  nextLineId: number;
+};
+
+function defaultPurchaseNoteDraft(): PurchaseNoteDraft {
+  return {
+    selectedAccountId: "",
+    purchaseFrom: "LOCAL_PURCHASE",
+    paymentTerm: "",
+    currency: DEFAULT_CURRENCY,
+    docDate: todayInputValue(),
+    status: "ACTIVE",
+    localPurchaseItems: [],
+    nextLineId: 1,
+  };
+}
+
+function normalizePurchaseFrom(value?: PurchaseFrom) {
+  return purchaseFromOptions.some((option) => option.value === value)
+    ? (value as PurchaseFrom)
+    : "LOCAL_PURCHASE";
+}
+
+function normalizePurchaseStatus(value?: PurchaseStatus) {
+  return value === "CANCELLED" ? value : "ACTIVE";
+}
+
+function normalizeCurrency(value?: string): CurrencyCode {
+  return CURRENCY_OPTIONS.includes(value as CurrencyCode)
+    ? (value as CurrencyCode)
+    : DEFAULT_CURRENCY;
+}
+
+function normalizePaymentTerm(value: unknown) {
+  if (value === null || value === undefined || value === "" || value === NO_PAYMENT_TERM) {
+    return "";
+  }
+
+  const numericValue = Number(value);
+  if (!Number.isInteger(numericValue) || numericValue < 1 || numericValue > 15) {
+    return "";
+  }
+
+  return String(numericValue);
+}
+
 function isVendorAccount(account: AccountListItem) {
   return account.accountType.name.trim().toLowerCase() === "vendor";
 }
@@ -93,10 +153,6 @@ function companyLabel(company: CompanyOption) {
 
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function vendorLabel(account: AccountListItem) {
-  return `${account.accountName} (${account.accountIndex ?? "No docId"})`;
 }
 
 function vendorReferenceCode(account: AccountListItem | undefined) {
@@ -142,7 +198,7 @@ export default function NewPurchaseNoteForm() {
   const [purchaseFrom, setPurchaseFrom] =
     useState<PurchaseFrom>("LOCAL_PURCHASE");
   const [paymentTerm, setPaymentTerm] = useState("");
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState<CurrencyCode>(DEFAULT_CURRENCY);
   const [docDate, setDocDate] = useState(todayInputValue());
   const [status, setStatus] = useState<PurchaseStatus>("ACTIVE");
   const [localPurchaseItems, setLocalPurchaseItems] = useState<LocalPurchaseItem[]>(
@@ -219,8 +275,77 @@ export default function NewPurchaseNoteForm() {
   } = usePagination(
     localPurchaseItems,
     DEFAULT_PAGE_SIZE,
-    localPurchaseItems.length,
+    selectedDepartmentId,
   );
+  const draftKey =
+    selectedDepartmentId && currentCompany?.id
+      ? `ims:draft:purchase-note:${selectedDepartmentId}:${currentCompany.id}`
+      : null;
+  const draftValues = useMemo<PurchaseNoteDraft>(
+    () => ({
+      selectedAccountId,
+      purchaseFrom,
+      paymentTerm,
+      currency,
+      docDate,
+      status,
+      localPurchaseItems,
+      nextLineId,
+    }),
+    [
+      currency,
+      docDate,
+      localPurchaseItems,
+      nextLineId,
+      paymentTerm,
+      purchaseFrom,
+      selectedAccountId,
+      status,
+    ],
+  );
+  const draftMetadata = useMemo(
+    () => ({
+      title: "New Purchase Note",
+      subtitle:
+        selectedVendor?.accountName ??
+        selectedInternalCompany?.name ??
+        purchaseFromLabels[purchaseFrom],
+      href: "/user/purchase/new-purchase-note",
+    }),
+    [
+      purchaseFrom,
+      selectedInternalCompany?.name,
+      selectedVendor?.accountName,
+    ],
+  );
+  const restorePurchaseDraft = (draft: PurchaseNoteDraft) => {
+    const lines = Array.isArray(draft.localPurchaseItems)
+      ? draft.localPurchaseItems
+      : [];
+    const fallbackLineId =
+      lines.reduce((max, item) => Math.max(max, Number(item.lineId) || 0), 0) +
+      1;
+    const restoredLineId = Number(draft.nextLineId);
+
+    setSelectedAccountId(draft.selectedAccountId ?? "");
+    setPurchaseFrom(normalizePurchaseFrom(draft.purchaseFrom));
+    setPaymentTerm(normalizePaymentTerm(draft.paymentTerm));
+    setCurrency(normalizeCurrency(draft.currency));
+    setDocDate(draft.docDate ?? todayInputValue());
+    setStatus(normalizePurchaseStatus(draft.status));
+    setLocalPurchaseItems(lines);
+    setNextLineId(restoredLineId > 0 ? restoredLineId : fallbackLineId);
+    localPurchaseItemPagination.setPage(
+      Math.max(1, Math.ceil(lines.length / DEFAULT_PAGE_SIZE)),
+    );
+  };
+  const { saveDraft: savePurchaseDraft } = useFormDraft<PurchaseNoteDraft>({
+    storageKey: draftKey,
+    values: draftValues,
+    metadata: draftMetadata,
+    getDefaultValues: defaultPurchaseNoteDraft,
+    restore: restorePurchaseDraft,
+  });
 
   useEffect(() => {
     const loadVendorAccounts = async () => {
@@ -277,17 +402,23 @@ export default function NewPurchaseNoteForm() {
     loadItems();
   }, [selectedDepartmentId]);
 
-  useEffect(() => {
-    setSelectedAccountId("");
-  }, [purchaseFrom, selectedDepartmentId, currentCompany?.id]);
+  const handlePurchaseFromChange = (value: string) => {
+    setPurchaseFrom(normalizePurchaseFrom(value as PurchaseFrom));
+  };
 
-  useEffect(() => {
-    setLocalPurchaseItems([]);
-    setNextLineId(1);
-  }, [purchaseFrom, selectedAccountId, selectedDepartmentId, currentCompany?.id]);
+  const handleSourceChange = (value: string) => {
+    setSelectedAccountId(value);
+  };
+
+  const handlePaymentTermChange = (value: string) => {
+    const nextPaymentTerm = normalizePaymentTerm(value);
+    setPaymentTerm(nextPaymentTerm);
+    savePurchaseDraft({ ...draftValues, paymentTerm: nextPaymentTerm });
+  };
 
   const handleInsertLocalProduct = () => {
     const lineId = nextLineId;
+    const nextLength = localPurchaseItems.length + 1;
 
     setLocalPurchaseItems((items) => [
       ...items,
@@ -305,6 +436,9 @@ export default function NewPurchaseNoteForm() {
       },
     ]);
     setNextLineId(lineId + 1);
+    localPurchaseItemPagination.setPage(
+      Math.max(1, Math.ceil(nextLength / DEFAULT_PAGE_SIZE)),
+    );
   };
 
   const updateLocalPurchaseItem = (
@@ -339,7 +473,7 @@ export default function NewPurchaseNoteForm() {
     }
 
     if (!isLocalPurchase) {
-      toast.success(`${purchaseFromLabels[purchaseFrom]} source selected.`);
+      toast.error("Only local purchase creation is available now.");
       return;
     }
 
@@ -449,7 +583,7 @@ export default function NewPurchaseNoteForm() {
             <Field label="Purchase From" required>
               <Select
                 value={purchaseFrom}
-                onValueChange={(value) => setPurchaseFrom(value as PurchaseFrom)}
+                onValueChange={handlePurchaseFromChange}
               >
                 <SelectTrigger className="h-10 w-full rounded-xl">
                   <SelectValue placeholder="Select purchase type" />
@@ -469,32 +603,36 @@ export default function NewPurchaseNoteForm() {
               required
               error={!isInternalPurchase ? vendorsError ?? undefined : undefined}
             >
-              <Select
-                value={selectedAccountId || undefined}
-                onValueChange={setSelectedAccountId}
-                disabled={
-                  isInternalPurchase
-                    ? internalCompanyOptions.length === 0
-                    : vendorsLoading || vendorAccounts.length === 0
-                }
-              >
-                <SelectTrigger className="h-10 w-full rounded-xl xl:col-span-2">
-                  <SelectValue placeholder={sourcePlaceholder} />
-                </SelectTrigger>
-                <SelectContent>
-                  {isInternalPurchase
-                    ? internalCompanyOptions.map((company) => (
-                        <SelectItem key={company.id} value={company.id}>
-                          {companyLabel(company)}
-                        </SelectItem>
-                      ))
-                    : vendorAccounts.map((account) => (
-                        <SelectItem key={account.id} value={account.id}>
-                          {vendorLabel(account)}
-                        </SelectItem>
-                      ))}
-                </SelectContent>
-              </Select>
+              {isInternalPurchase ? (
+                <Select
+                  value={selectedAccountId || undefined}
+                  onValueChange={handleSourceChange}
+                  disabled={internalCompanyOptions.length === 0}
+                >
+                  <SelectTrigger className="h-10 w-full rounded-xl xl:col-span-2">
+                    <SelectValue placeholder={sourcePlaceholder} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {internalCompanyOptions.map((company) => (
+                      <SelectItem key={company.id} value={company.id}>
+                        {companyLabel(company)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <AccountSearchPicker
+                  value={selectedAccountId}
+                  onChange={handleSourceChange}
+                  options={vendorAccounts}
+                  loading={vendorsLoading}
+                  disabled={vendorsLoading || vendorAccounts.length === 0}
+                  placeholder={sourcePlaceholder}
+                  modalTitle="Search Vendor"
+                  searchPlaceholder="Search vendor by name, doc ID, phone, email, or tax ID"
+                  emptyMessage="No vendor accounts found."
+                />
+              )}
               {vendorsLoading && !isInternalPurchase ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -533,9 +671,7 @@ export default function NewPurchaseNoteForm() {
             <Field label="Payment Term">
               <Select
                 value={paymentTerm || NO_PAYMENT_TERM}
-                onValueChange={(value) =>
-                  setPaymentTerm(value === NO_PAYMENT_TERM ? "" : value)
-                }
+                onValueChange={handlePaymentTermChange}
               >
                 <SelectTrigger className="h-10 w-full rounded-xl">
                   <SelectValue placeholder="Payment term" />
@@ -584,12 +720,19 @@ export default function NewPurchaseNoteForm() {
             </Field>
 
             <Field label="Currency">
-              <Select value={currency} onValueChange={setCurrency}>
+              <Select
+                value={currency}
+                onValueChange={(value) => setCurrency(value as CurrencyCode)}
+              >
                 <SelectTrigger className="h-10 w-full rounded-xl">
                   <SelectValue placeholder="Currency" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="USD">USD</SelectItem>
+                  {CURRENCY_OPTIONS.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </Field>
@@ -645,8 +788,7 @@ export default function NewPurchaseNoteForm() {
           )}
         </section>
 
-        {isLocalPurchase && selectedVendor ? (
-          <section className="overflow-hidden rounded-2xl border bg-background">
+        <section className="overflow-hidden rounded-2xl border bg-background">
             <div className="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
@@ -877,20 +1019,19 @@ export default function NewPurchaseNoteForm() {
                 />
               </div>
             )}
-          </section>
-        ) : null}
+        </section>
 
         <section className="rounded-2xl border bg-background px-5 py-4">
           <div className="grid gap-4 text-sm md:grid-cols-4">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                Doc Qty
+                Qty
               </p>
               <p className="mt-1 font-semibold">{totals.quantity}</p>
             </div>
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                Doc Weight
+                Weight
               </p>
               <p className="mt-1 font-semibold">{totals.weight.toFixed(4)}</p>
             </div>
@@ -932,7 +1073,7 @@ export default function NewPurchaseNoteForm() {
             ) : (
               <Save className="h-4 w-4" />
             )}
-            {isLocalPurchase ? "Save & Close" : "Continue"}
+            Save & Close
           </Button>
         </div>
       </form>

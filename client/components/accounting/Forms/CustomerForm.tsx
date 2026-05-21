@@ -10,7 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Controller,
   Control,
@@ -34,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useFormDraft } from "@/hooks/use-form-draft";
 import { useGeography } from "@/hooks/useGeography";
 import { useAppSelector } from "@/store/hooks";
 
@@ -64,6 +65,32 @@ type AccountFormValues = {
   remark: string;
   legalText1: string;
 };
+
+function defaultAccountFormValues(): AccountFormValues {
+  return {
+    accountTypeId: "",
+    accountName: "",
+    accountLongName: "",
+    status: "Active",
+    closeDate: "",
+    closeReason: "",
+    address: "",
+    address2: "",
+    countryIso2: "",
+    stateId: "",
+    city: "",
+    zipCode: "",
+    phone1: "",
+    phone2: "",
+    email: "",
+    website: "",
+    trnNo: "",
+    isTaxable: true,
+    popupRemark: "",
+    remark: "",
+    legalText1: "",
+  };
+}
 
 interface TextInputProps {
   register: UseFormRegister<AccountFormValues>;
@@ -209,6 +236,8 @@ export default function AccountForm() {
     (state) => state.company.selectedCompanyId ?? state.auth.user?.selectedCompanyId,
   );
   const scope = role === "ORG_ADMIN" ? "admin" : "user";
+  const previousCountryRef = useRef<string | undefined>(undefined);
+  const previousStateRef = useRef<string | undefined>(undefined);
 
   const {
     register,
@@ -219,21 +248,43 @@ export default function AccountForm() {
     setValue,
     formState: { isSubmitting },
   } = useForm<AccountFormValues>({
-    defaultValues: {
-      accountTypeId: "",
-      status: "Active",
-      isTaxable: true,
-      countryIso2: "",
-      stateId: "",
-      city: "",
-    },
+    defaultValues: defaultAccountFormValues(),
   });
 
+  const accountDraftValues = useWatch({ control }) as AccountFormValues;
   const status = useWatch({ control, name: "status" });
   const selectedCountryIso2 = useWatch({ control, name: "countryIso2" });
   const selectedStateId = useWatch({ control, name: "stateId" });
   const selectedAccountTypeId = useWatch({ control, name: "accountTypeId" });
   const { countries, states, loading: geographyLoading } = useGeography(selectedCountryIso2);
+  const accountDraftKey =
+    scope === "admin"
+      ? selectedCompanyId
+        ? `ims:draft:new-account:admin:${selectedCompanyId}`
+        : null
+      : selectedDepartmentId
+        ? `ims:draft:new-account:user:${selectedDepartmentId}`
+        : null;
+  const accountDraftMetadata = useMemo(
+    () => ({
+      title: "New Account",
+      subtitle: accountDraftValues.accountName || "Account draft",
+      href: "/user/accounting/new-account",
+    }),
+    [accountDraftValues.accountName],
+  );
+
+  useFormDraft<AccountFormValues>({
+    storageKey: accountDraftKey,
+    values: { ...defaultAccountFormValues(), ...accountDraftValues },
+    metadata: accountDraftMetadata,
+    getDefaultValues: defaultAccountFormValues,
+    restore: (draft) => {
+      previousCountryRef.current = draft.countryIso2;
+      previousStateRef.current = draft.stateId;
+      reset({ ...defaultAccountFormValues(), ...draft });
+    },
+  });
 
   useEffect(() => {
     const loadAccountTypes = async () => {
@@ -271,12 +322,31 @@ export default function AccountForm() {
   }));
 
   useEffect(() => {
-    setValue("stateId", "");
-    setValue("city", "");
+    if (previousCountryRef.current === undefined) {
+      previousCountryRef.current = selectedCountryIso2;
+      return;
+    }
+
+    if (previousCountryRef.current !== selectedCountryIso2) {
+      setValue("stateId", "");
+      setValue("city", "");
+      previousStateRef.current = "";
+    }
+
+    previousCountryRef.current = selectedCountryIso2;
   }, [selectedCountryIso2, setValue]);
 
   useEffect(() => {
-    setValue("city", "");
+    if (previousStateRef.current === undefined) {
+      previousStateRef.current = selectedStateId;
+      return;
+    }
+
+    if (previousStateRef.current !== selectedStateId) {
+      setValue("city", "");
+    }
+
+    previousStateRef.current = selectedStateId;
   }, [selectedStateId, setValue]);
 
   const handleCancel = () => {
@@ -306,14 +376,6 @@ export default function AccountForm() {
       const response = await createAccount(scope, payload);
       toast.success(`Account created: ${response.data.account.accountIndex}`);
       router.push("/user/accounting/accounts");
-      reset({
-        accountTypeId: accountTypes[0]?.id ?? "",
-        status: "Active",
-        isTaxable: true,
-        countryIso2: "",
-        stateId: "",
-        city: "",
-      });
     } catch (error: unknown) {
       const apiError = error as {
         response?: {

@@ -11,6 +11,7 @@ import { getInventoryItemByLot } from "@/api/services/inventory.service";
 import type { InventoryItemListItem } from "@/api/services/inventory.service";
 import { createInvoiceFromInventory } from "@/api/services/invoice.service";
 import type { InvoiceStatus, InvoiceType } from "@/api/services/invoice.service";
+import { AccountSearchPicker } from "@/components/common/account-search-picker";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { permissionAllows, permissionsToMap } from "@/config/modules";
+import { useFormDraft } from "@/hooks/use-form-draft";
 import { useAppSelector } from "@/store/hooks";
 import type { DepartmentAccessOption } from "@/store/types/types";
 
@@ -44,10 +46,6 @@ function isCustomerAccount(account: AccountListItem) {
 
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function accountLabel(account: AccountListItem) {
-  return `${account.accountName} (${account.accountIndex ?? "No docId"})`;
 }
 
 function departmentOptionLabel(access: DepartmentAccessOption) {
@@ -79,6 +77,42 @@ function unitPrice(item: InventoryItemListItem) {
 
 function stockCurrency(item?: InventoryItemListItem | null) {
   return item?.purchase?.currency ?? item?.purchaseNote?.currency ?? "USD";
+}
+
+type NewInvoiceDraft = {
+  accountId: string;
+  destinationDepartmentId: string;
+  referenceDocNo: string;
+  invoiceType: InvoiceType;
+  docDate: string;
+  status: InvoiceStatus;
+  lotId: string;
+  remark: string;
+};
+
+function defaultNewInvoiceDraft(): NewInvoiceDraft {
+  return {
+    accountId: "",
+    destinationDepartmentId: "",
+    referenceDocNo: "",
+    invoiceType: "LOCAL_INVOICE",
+    docDate: todayInputValue(),
+    status: "ACTIVE",
+    lotId: "",
+    remark: "",
+  };
+}
+
+function normalizeInvoiceType(value?: InvoiceType) {
+  return invoiceTypeOptions.some((option) => option.value === value)
+    ? (value as InvoiceType)
+    : "LOCAL_INVOICE";
+}
+
+function normalizeInvoiceStatus(value?: InvoiceStatus) {
+  return statusOptions.some((option) => option.value === value)
+    ? (value as InvoiceStatus)
+    : "ACTIVE";
 }
 
 export default function NewInvoicePage() {
@@ -169,6 +203,65 @@ export default function NewInvoicePage() {
     (access) => access.departmentId === destinationDepartmentId,
   );
   const subtotal = lotItem?.totalCost ?? (Number(quantity) || 0) * (Number(unitPriceValue) || 0);
+  const draftKey =
+    selectedDepartmentId && currentCompany?.id
+      ? `ims:draft:new-invoice:${selectedDepartmentId}:${currentCompany.id}`
+      : null;
+  const draftValues = useMemo<NewInvoiceDraft>(
+    () => ({
+      accountId,
+      destinationDepartmentId,
+      referenceDocNo,
+      invoiceType,
+      docDate,
+      status,
+      lotId,
+      remark,
+    }),
+    [
+      accountId,
+      destinationDepartmentId,
+      docDate,
+      invoiceType,
+      lotId,
+      referenceDocNo,
+      remark,
+      status,
+    ],
+  );
+  const draftMetadata = useMemo(
+    () => ({
+      title: "New Invoice",
+      subtitle:
+        selectedCustomer?.accountName ??
+        selectedInternalDestination?.departmentName ??
+        (lotId ? `Lot ${lotId}` : "Invoice draft"),
+      href: "/user/invoice/new-invoice",
+    }),
+    [
+      lotId,
+      selectedCustomer?.accountName,
+      selectedInternalDestination?.departmentName,
+    ],
+  );
+  useFormDraft<NewInvoiceDraft>({
+    storageKey: draftKey,
+    values: draftValues,
+    metadata: draftMetadata,
+    getDefaultValues: defaultNewInvoiceDraft,
+    restore: (draft) => {
+      setAccountId(draft.accountId ?? "");
+      setDestinationDepartmentId(draft.destinationDepartmentId ?? "");
+      setReferenceDocNo(draft.referenceDocNo ?? "");
+      setInvoiceType(normalizeInvoiceType(draft.invoiceType));
+      setDocDate(draft.docDate ?? todayInputValue());
+      setStatus(normalizeInvoiceStatus(draft.status));
+      setLotId(draft.lotId ?? "");
+      setRemark(draft.remark ?? "");
+      setLotItem(null);
+      setLotLookupError(null);
+    },
+  });
 
   useEffect(() => {
     const loadCustomerAccounts = async () => {
@@ -199,11 +292,6 @@ export default function NewInvoicePage() {
 
     loadCustomerAccounts();
   }, [selectedDepartmentId]);
-
-  useEffect(() => {
-    setAccountId("");
-    setDestinationDepartmentId("");
-  }, [invoiceType, selectedDepartmentId, currentCompany?.id]);
 
   useEffect(() => {
     const value = lotId.trim();
@@ -258,6 +346,13 @@ export default function NewInvoicePage() {
 
     return () => window.clearTimeout(timer);
   }, [lotId, selectedDepartmentId]);
+
+  const handleInvoiceTypeChange = (value: InvoiceType) => {
+    const nextType = normalizeInvoiceType(value);
+    setInvoiceType(nextType);
+    setAccountId("");
+    setDestinationDepartmentId("");
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -368,7 +463,9 @@ export default function NewInvoicePage() {
             <Field label="Invoice Type" required>
               <Select
                 value={invoiceType}
-                onValueChange={(value) => setInvoiceType(value as InvoiceType)}
+                onValueChange={(value) =>
+                  handleInvoiceTypeChange(value as InvoiceType)
+                }
               >
                 <SelectTrigger className="h-10 w-full rounded-xl">
                   <SelectValue />
@@ -409,26 +506,19 @@ export default function NewInvoicePage() {
                   </SelectContent>
                 </Select>
               ) : (
-                <Select
-                  value={accountId || undefined}
-                  onValueChange={setAccountId}
+                <AccountSearchPicker
+                  value={accountId}
+                  onChange={setAccountId}
+                  options={customerAccounts}
+                  loading={customersLoading}
                   disabled={customersLoading || customerAccounts.length === 0}
-                >
-                  <SelectTrigger className="h-10 w-full rounded-xl">
-                    <SelectValue
-                      placeholder={
-                        customersLoading ? "Loading customers..." : "Select customer"
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customerAccounts.map((account) => (
-                      <SelectItem key={account.id} value={account.id}>
-                        {accountLabel(account)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder={
+                    customersLoading ? "Loading customers..." : "Select customer"
+                  }
+                  modalTitle="Search Customer"
+                  searchPlaceholder="Search customer by name, doc ID, phone, email, or tax ID"
+                  emptyMessage="No customer accounts found."
+                />
               )}
             </Field>
 

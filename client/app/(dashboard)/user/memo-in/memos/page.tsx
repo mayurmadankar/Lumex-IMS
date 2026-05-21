@@ -35,6 +35,11 @@ function formatPaymentTerm(value: number | null) {
   return `${value} ${value === 1 ? "Day" : "Days"}`;
 }
 
+function formatReferenceDocNo(value?: string | null) {
+  if (!value) return "-";
+  return value.replace(/^Memo Return:\s*/i, "");
+}
+
 function StatusPill({ status }: { status: MemoListItem["status"] }) {
   const active = status === "ACTIVE";
 
@@ -179,19 +184,19 @@ export default function MemoListPage() {
                     <th className="px-3 py-3 font-medium">Company</th>
                     <th className="px-3 py-3 font-medium">Department</th>
                     <th className="px-3 py-3 font-medium">Performed By</th>
-                    <th className="px-3 py-3 font-medium">Doc Type</th>
+                    <th className="px-3 py-3 font-medium">Type</th>
                     <th className="px-3 py-3 font-medium">Open Date</th>
                     <th className="px-3 py-3 font-medium">Doc ID</th>
                     <th className="px-3 py-3 font-medium">Memo No</th>
-                    <th className="px-3 py-3 font-medium">Doc Account</th>
-                    <th className="px-3 py-3 font-medium">Doc Date</th>
+                    <th className="px-3 py-3 font-medium">Account</th>
+                    <th className="px-3 py-3 font-medium">Date</th>
                     <th className="px-3 py-3 font-medium">Reference Doc No</th>
                     <th className="px-3 py-3 font-medium">Vendor Doc ID</th>
                     <th className="px-3 py-3 text-right font-medium">
-                      Doc Qty
+                      Qty
                     </th>
                     <th className="px-3 py-3 text-right font-medium">
-                      Doc Weight
+                      Weight
                     </th>
                     <th className="px-3 py-3 font-medium">Payment Terms</th>
                     <th className="px-3 py-3 font-medium">Currency</th>
@@ -204,7 +209,7 @@ export default function MemoListPage() {
                     <th className="px-3 py-3 text-right font-medium">
                       Balance Amount
                     </th>
-                    <th className="px-3 py-3 font-medium">Doc Status</th>
+                    <th className="px-3 py-3 font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -246,7 +251,7 @@ export default function MemoListPage() {
                         {formatDate(memo.docDate)}
                       </td>
                       <td className="px-3 py-3">
-                        {memo.referenceDocNo ?? "-"}
+                        {formatReferenceDocNo(memo.referenceDocNo)}
                       </td>
                       <td className="px-3 py-3">{memo.vendorDocId ?? "-"}</td>
                       <td className="px-3 py-3 text-right">{memo.docQty}</td>

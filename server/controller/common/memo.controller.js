@@ -75,17 +75,10 @@ const purchaseMemoItemsSchema = z.object({
   itemIds: z.array(z.string().uuid("Invalid item")).min(1, "Select at least one memo item"),
   referenceDocNo: optionalString(),
   paymentTerm: paymentTermSchema(),
-  currency: z
-    .preprocess(
-      emptyToUndefined,
-      z
-        .string()
-        .trim()
-        .length(3, "Currency must be a 3-letter code")
-        .toUpperCase()
-        .optional(),
-    )
-    .refine((value) => !value || value === "USD", "Only USD currency is available now"),
+  currency: z.preprocess(
+    emptyToUndefined,
+    z.string().trim().length(3, "Currency must be a 3-letter code").toUpperCase().optional(),
+  ),
   docDate: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   status: z.preprocess(
     (value) => (typeof value === "string" ? value.trim().toUpperCase() : value),
@@ -934,7 +927,8 @@ export const returnMemoInventoryItems = async (req, res) => {
   const totals = buildTotals(memoItems);
   const memoNos = [...new Set(memoItems.map((item) => item.memo?.memoNo).filter(Boolean))];
   const referenceDocNo =
-    data.referenceDocNo ?? (memoNos.length > 0 ? `Memo Return: ${memoNos.join(", ")}` : null);
+    data.referenceDocNo ?? (memoNos.length > 0 ? memoNos.join(", ") : null);
+  const returnCurrency = memoItems.find((item) => item.memo?.currency)?.memo?.currency ?? "USD";
 
   try {
     const memoReturn = await prisma.$transaction(async (tx) => {
@@ -959,7 +953,7 @@ export const returnMemoInventoryItems = async (req, res) => {
           mainGrandTotalPrice: totals.totalPrice,
           balanceAmount: 0,
           paymentTerm: null,
-          currency: "USD",
+          currency: returnCurrency,
           status: "ACTIVE",
           companyId: department.companyId,
           departmentId: department.id,

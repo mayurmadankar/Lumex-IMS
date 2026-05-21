@@ -237,7 +237,7 @@ export default function MemoOutListPage() {
                     <th className="px-3 py-3 font-medium">Company</th>
                     <th className="px-3 py-3 font-medium">Department</th>
                     <th className="px-3 py-3 font-medium">Performed By</th>
-                    <th className="px-3 py-3 font-medium">Doc Type</th>
+                    <th className="px-3 py-3 font-medium">Type</th>
                     <th className="px-3 py-3 font-medium">Memo Out No</th>
                     <th className="px-3 py-3 font-medium">Doc ID</th>
                     <th className="px-3 py-3 font-medium">Vendor / Customer</th>

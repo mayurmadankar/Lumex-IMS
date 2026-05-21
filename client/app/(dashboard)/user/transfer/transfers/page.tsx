@@ -254,7 +254,7 @@ export default function TransferListPage() {
               <table className="w-full min-w-[1980px] text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
-                    <th className="px-3 py-3 font-medium">Doc Type</th>
+                    <th className="px-3 py-3 font-medium">Type</th>
                     <th className="px-3 py-3 font-medium">Transfer No</th>
                     <th className="px-3 py-3 font-medium">Doc ID</th>
                     <th className="px-3 py-3 font-medium">Lot ID</th>
@@ -268,7 +268,7 @@ export default function TransferListPage() {
                     <th className="px-3 py-3 text-right font-medium">Weight</th>
                     <th className="px-3 py-3 font-medium">Certificate No</th>
                     <th className="px-3 py-3 font-medium">Reference Doc No</th>
-                    <th className="px-3 py-3 font-medium">Doc Date</th>
+                    <th className="px-3 py-3 font-medium">Date</th>
                     <th className="px-3 py-3 font-medium">Created By</th>
                     <th className="px-3 py-3 font-medium">Notes</th>
                   </tr>

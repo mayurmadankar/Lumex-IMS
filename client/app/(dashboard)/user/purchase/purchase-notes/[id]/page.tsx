@@ -40,6 +40,11 @@ function formatPaymentTerm(value?: number | null) {
   return `${value} ${value === 1 ? "Day" : "Days"}`;
 }
 
+function formatReferenceDocNo(value?: string | null) {
+  if (!value) return "-";
+  return value.replace(/^Purchase Return:\s*/i, "");
+}
+
 function itemLabel(item: PurchaseNoteInventoryItem) {
   if (item.itemMaster) {
     return `${item.itemMaster.itemId} - ${item.itemMaster.itemName}`;
@@ -209,13 +214,16 @@ export default function PurchaseNoteDetailPage() {
             label="Vendor"
             value={purchaseNote.vendorAccount?.accountName ?? "-"}
           />
-          <DetailValue label="Doc Status" value={<StatusPill status={purchaseNote.status} />} />
+          <DetailValue label="Status" value={<StatusPill status={purchaseNote.status} />} />
           <DetailValue label="Open Date" value={formatDate(purchaseNote.openDate, true)} />
-          <DetailValue label="Doc Date" value={formatDate(purchaseNote.docDate, true)} />
-          <DetailValue label="Reference Doc No" value={purchaseNote.referenceDocNo ?? "-"} />
+          <DetailValue label="Date" value={formatDate(purchaseNote.docDate, true)} />
+          <DetailValue
+            label="Reference Doc No"
+            value={formatReferenceDocNo(purchaseNote.referenceDocNo)}
+          />
           <DetailValue label="Source Memo" value={sourceMemoLabel(purchaseNote)} />
-          <DetailValue label="Doc Qty" value={purchaseNote.docQty} />
-          <DetailValue label="Doc Weight" value={formatNumber(purchaseNote.docWeight, 4)} />
+          <DetailValue label="Qty" value={purchaseNote.docQty} />
+          <DetailValue label="Weight" value={formatNumber(purchaseNote.docWeight, 4)} />
           <DetailValue label="Payment Terms" value={formatPaymentTerm(purchaseNote.paymentTerm)} />
           <DetailValue label="Currency" value={purchaseNote.currency} />
           <DetailValue

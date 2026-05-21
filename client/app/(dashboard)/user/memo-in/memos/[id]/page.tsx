@@ -191,13 +191,13 @@ export default function MemoDetailPage() {
             value={memo.createdBy?.fullName ?? memo.createdBy?.email ?? "-"}
           />
           <DetailValue label="Vendor" value={memo.account.accountName} />
-          <DetailValue label="Doc Status" value={<StatusPill status={memo.status} />} />
+          <DetailValue label="Status" value={<StatusPill status={memo.status} />} />
           <DetailValue label="Open Date" value={formatDate(memo.openDate, true)} />
-          <DetailValue label="Doc Date" value={formatDate(memo.docDate, true)} />
+          <DetailValue label="Date" value={formatDate(memo.docDate, true)} />
           <DetailValue label="Reference Doc No" value={memo.referenceDocNo ?? "-"} />
           <DetailValue label="Vendor Doc ID" value={memo.vendorDocId ?? "-"} />
-          <DetailValue label="Doc Qty" value={memo.docQty} />
-          <DetailValue label="Doc Weight" value={formatNumber(memo.docWeight, 4)} />
+          <DetailValue label="Qty" value={memo.docQty} />
+          <DetailValue label="Weight" value={formatNumber(memo.docWeight, 4)} />
           <DetailValue label="Payment Terms" value={formatPaymentTerm(memo.paymentTerm)} />
           <DetailValue label="Currency" value={memo.currency} />
           <DetailValue label="Doc Grand Total" value={formatNumber(memo.docGrandTotalPrice)} />

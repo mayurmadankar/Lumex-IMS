@@ -15,7 +15,6 @@ import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/input";
 import Modal, { ModalBody, ModalFooter } from "@/components/ui/modal";
 import Pagination from "@/components/ui/pagination";
-import { TableSearchBar } from "@/components/ui/table-search-bar";
 import {
   Select,
   SelectContent,
@@ -23,7 +22,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TableSearchBar } from "@/components/ui/table-search-bar";
+import {
+  CURRENCY_OPTIONS,
+  DEFAULT_CURRENCY,
+  type CurrencyCode,
+} from "@/config/currencies";
 import { permissionAllows, permissionsToMap } from "@/config/modules";
+import { useFormDraft } from "@/hooks/use-form-draft";
 import { usePagination } from "@/hooks/use-pagination";
 import { matchesTableSearch } from "@/lib/table-search";
 import { useAppSelector } from "@/store/hooks";
@@ -119,6 +125,43 @@ function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
 }
 
+type MemoInventoryPurchaseDraft = {
+  selectedItemIds: string[];
+  purchasePaymentTerm: string;
+  purchaseDocDate: string;
+  purchaseCurrency: CurrencyCode;
+  purchaseRemark: string;
+};
+
+function defaultMemoInventoryPurchaseDraft(): MemoInventoryPurchaseDraft {
+  return {
+    selectedItemIds: [],
+    purchasePaymentTerm: "",
+    purchaseDocDate: todayInputValue(),
+    purchaseCurrency: DEFAULT_CURRENCY,
+    purchaseRemark: "",
+  };
+}
+
+function normalizeCurrency(value?: string): CurrencyCode {
+  return CURRENCY_OPTIONS.includes(value as CurrencyCode)
+    ? (value as CurrencyCode)
+    : DEFAULT_CURRENCY;
+}
+
+function normalizePaymentTerm(value: unknown) {
+  if (value === null || value === undefined || value === "" || value === NO_PAYMENT_TERM) {
+    return "";
+  }
+
+  const numericValue = Number(value);
+  if (!Number.isInteger(numericValue) || numericValue < 1 || numericValue > 15) {
+    return "";
+  }
+
+  return String(numericValue);
+}
+
 function companyLabel(company?: MemoInventoryItem["company"]) {
   if (!company) return "-";
   return company.code ? `${company.name} (${company.code})` : company.name;
@@ -137,6 +180,8 @@ export default function MemoListPage() {
   const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
   const [purchasePaymentTerm, setPurchasePaymentTerm] = useState("");
   const [purchaseDocDate, setPurchaseDocDate] = useState(todayInputValue());
+  const [purchaseCurrency, setPurchaseCurrency] =
+    useState<CurrencyCode>(DEFAULT_CURRENCY);
   const [purchaseRemark, setPurchaseRemark] = useState("");
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [returnModalOpen, setReturnModalOpen] = useState(false);
@@ -169,6 +214,52 @@ export default function MemoListPage() {
     permissionMap.MEMO_IN_RETURN,
     "READ_WRITE",
   );
+  const purchaseDraftKey = selectedDepartmentId
+    ? `ims:draft:memo-inventory-purchase:${selectedDepartmentId}`
+    : null;
+  const purchaseDraftValues = useMemo<MemoInventoryPurchaseDraft>(
+    () => ({
+      selectedItemIds,
+      purchasePaymentTerm,
+      purchaseDocDate,
+      purchaseCurrency,
+      purchaseRemark,
+    }),
+    [
+      purchaseCurrency,
+      purchaseDocDate,
+      purchasePaymentTerm,
+      purchaseRemark,
+      selectedItemIds,
+    ],
+  );
+  const purchaseDraftMetadata = useMemo(
+    () => ({
+      title: "Purchase Memo Items",
+      subtitle:
+        selectedItemIds.length > 0
+          ? `${selectedItemIds.length} selected`
+          : "Memo inventory purchase",
+      href: "/user/inventory/memo-in-inventory",
+    }),
+    [selectedItemIds.length],
+  );
+
+  const { saveDraft: savePurchaseDraft } = useFormDraft<MemoInventoryPurchaseDraft>({
+    storageKey: purchaseDraftKey,
+    values: purchaseDraftValues,
+    metadata: purchaseDraftMetadata,
+    getDefaultValues: defaultMemoInventoryPurchaseDraft,
+    restore: (draft) => {
+      setSelectedItemIds(
+        Array.isArray(draft.selectedItemIds) ? draft.selectedItemIds : [],
+      );
+      setPurchasePaymentTerm(normalizePaymentTerm(draft.purchasePaymentTerm));
+      setPurchaseDocDate(draft.purchaseDocDate ?? todayInputValue());
+      setPurchaseCurrency(normalizeCurrency(draft.purchaseCurrency));
+      setPurchaseRemark(draft.purchaseRemark ?? "");
+    },
+  });
 
   useEffect(() => {
     if (!canReadMemos || !selectedDepartmentId) {
@@ -320,6 +411,15 @@ export default function MemoListPage() {
     setPurchaseModalOpen(false);
   };
 
+  const handlePurchasePaymentTermChange = (value: string) => {
+    const nextPaymentTerm = normalizePaymentTerm(value);
+    setPurchasePaymentTerm(nextPaymentTerm);
+    savePurchaseDraft({
+      ...purchaseDraftValues,
+      purchasePaymentTerm: nextPaymentTerm,
+    });
+  };
+
   const openReturnModal = () => {
     if (selectedMemoItems.length === 0) {
       toast.error("Select at least one memo item.");
@@ -356,7 +456,7 @@ export default function MemoListPage() {
         departmentId: selectedDepartmentId,
         itemIds: selectedItemIds,
         paymentTerm: purchasePaymentTerm ? Number(purchasePaymentTerm) : null,
-        currency: "USD",
+        currency: purchaseCurrency,
         docDate: purchaseDocDate,
         status: "ACTIVE",
         remark: purchaseRemark,
@@ -369,6 +469,7 @@ export default function MemoListPage() {
       setSelectedItemIds([]);
       setPurchasePaymentTerm("");
       setPurchaseRemark("");
+      setPurchaseCurrency(DEFAULT_CURRENCY);
       setPurchaseDocDate(todayInputValue());
       setPurchaseModalOpen(false);
       toast.success(
@@ -541,7 +642,7 @@ export default function MemoListPage() {
                       Total Cost
                     </th>
                     <th className="px-3 py-3 font-medium">Date</th>
-                    <th className="px-3 py-3 font-medium">Doc Status</th>
+                    <th className="px-3 py-3 font-medium">Status</th>
                     <th className="px-3 py-3 font-medium">Payment Terms</th>
                     <th className="px-3 py-3 font-medium">Currency</th>
                     <th className="px-3 py-3 font-medium">Remark</th>
@@ -705,9 +806,7 @@ export default function MemoListPage() {
             <Field label="Payment Terms">
               <Select
                 value={purchasePaymentTerm || NO_PAYMENT_TERM}
-                onValueChange={(value) =>
-                  setPurchasePaymentTerm(value === NO_PAYMENT_TERM ? "" : value)
-                }
+                onValueChange={handlePurchasePaymentTermChange}
               >
                 <SelectTrigger className="h-10 w-full rounded-xl">
                   <SelectValue placeholder="Payment terms" />
@@ -723,11 +822,23 @@ export default function MemoListPage() {
               </Select>
             </Field>
             <Field label="Currency">
-              <Input
-                value="USD"
-                readOnly
-                className="h-10 rounded-xl bg-muted"
-              />
+              <Select
+                value={purchaseCurrency}
+                onValueChange={(value) =>
+                  setPurchaseCurrency(value as CurrencyCode)
+                }
+              >
+                <SelectTrigger className="h-10 w-full rounded-xl">
+                  <SelectValue placeholder="Currency" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CURRENCY_OPTIONS.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
             <Field label="Remark">
               <Input

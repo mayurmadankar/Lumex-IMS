@@ -171,8 +171,8 @@ export default function InvoiceDetailPage() {
           <DetailValue label="Invoice Date" value={formatDate(invoice.docDate, true)} />
           <DetailValue label="Reference Doc No" value={invoice.referenceDocNo} />
           <DetailValue label="Invoice Type" value={invoice.invoiceTypeLabel} />
-          <DetailValue label="Doc Qty" value={invoice.docQty} />
-          <DetailValue label="Doc Weight" value={formatNumber(invoice.docWeight, 4)} />
+          <DetailValue label="Qty" value={invoice.docQty} />
+          <DetailValue label="Weight" value={formatNumber(invoice.docWeight, 4)} />
           <DetailValue label="Subtotal" value={formatNumber(invoice.subtotalAmount)} />
           <DetailValue label="Total Amount" value={formatNumber(invoice.totalAmount)} />
           <DetailValue label="Balance Amount" value={formatNumber(invoice.balanceAmount)} />

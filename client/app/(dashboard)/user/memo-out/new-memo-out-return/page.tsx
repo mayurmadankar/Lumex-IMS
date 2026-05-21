@@ -11,17 +11,12 @@ import {
   returnMemoOutItem,
 } from "@/api/services/memo-out.service";
 import type { MemoOutAccount, MemoOutReturnItem } from "@/api/services/memo-out.service";
+import { AccountSearchPicker } from "@/components/common/account-search-picker";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useCompanyAccess } from "@/hooks/use-company-access";
+import { useFormDraft } from "@/hooks/use-form-draft";
 
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
@@ -34,11 +29,6 @@ function formatNumber(value?: number | null, digits = 2) {
   }).format(value ?? 0);
 }
 
-function accountLabel(account: MemoOutAccount) {
-  const type = account.accountType?.name ?? "Account";
-  return `${account.accountName} (${type}${account.accountIndex ? ` / ${account.accountIndex}` : ""})`;
-}
-
 function itemLabel(candidate?: MemoOutReturnItem | null) {
   const item = candidate?.inventoryItem;
   if (!item) return "";
@@ -47,6 +37,22 @@ function itemLabel(candidate?: MemoOutReturnItem | null) {
   }
 
   return item.itemType ?? item.itemId;
+}
+
+type MemoOutReturnDraft = {
+  accountId: string;
+  docDate: string;
+  referenceDocNo: string;
+  lotId: string;
+};
+
+function defaultMemoOutReturnDraft(): MemoOutReturnDraft {
+  return {
+    accountId: "",
+    docDate: todayInputValue(),
+    referenceDocNo: "",
+    lotId: "",
+  };
 }
 
 export default function NewMemoOutReturnPage() {
@@ -70,6 +76,42 @@ export default function NewMemoOutReturnPage() {
     () => accounts.find((account) => account.id === accountId) ?? null,
     [accountId, accounts],
   );
+  const draftKey = currentCompany?.id
+    ? `ims:draft:memo-out-return:${currentCompany.id}`
+    : null;
+  const draftValues = useMemo<MemoOutReturnDraft>(
+    () => ({
+      accountId,
+      docDate,
+      referenceDocNo,
+      lotId,
+    }),
+    [accountId, docDate, lotId, referenceDocNo],
+  );
+  const draftMetadata = useMemo(
+    () => ({
+      title: "New Memo Out Return",
+      subtitle:
+        selectedAccount?.accountName ??
+        (lotId ? `Lot ${lotId}` : currentCompany?.name ?? "Memo Out return"),
+      href: "/user/memo-out/new-memo-out-return",
+    }),
+    [currentCompany?.name, lotId, selectedAccount?.accountName],
+  );
+  useFormDraft<MemoOutReturnDraft>({
+    storageKey: draftKey,
+    values: draftValues,
+    metadata: draftMetadata,
+    getDefaultValues: defaultMemoOutReturnDraft,
+    restore: (draft) => {
+      setAccountId(draft.accountId ?? "");
+      setDocDate(draft.docDate ?? todayInputValue());
+      setReferenceDocNo(draft.referenceDocNo ?? "");
+      setLotId(draft.lotId ?? "");
+      setCandidate(null);
+      setLookupError(null);
+    },
+  });
   const item = candidate?.inventoryItem ?? null;
   const sourceMemoOut = candidate?.memoOut ?? null;
 
@@ -99,11 +141,12 @@ export default function NewMemoOutReturnPage() {
     loadAccounts();
   }, [canReturnMemoOut, currentCompany?.id]);
 
-  useEffect(() => {
+  const handleAccountChange = (value: string) => {
+    setAccountId(value);
     setLotId("");
     setCandidate(null);
     setLookupError(null);
-  }, [accountId, currentCompany?.id]);
+  };
 
   useEffect(() => {
     const value = lotId.trim();
@@ -215,24 +258,16 @@ export default function NewMemoOutReturnPage() {
         <section className="overflow-hidden rounded-2xl border bg-background">
           <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
             <Field label="Return From Vendor / Customer" required error={accountsError ?? undefined}>
-              <Select
-                value={accountId || undefined}
-                onValueChange={setAccountId}
+              <AccountSearchPicker
+                value={accountId}
+                onChange={handleAccountChange}
+                options={accounts}
+                loading={accountsLoading}
                 disabled={accountsLoading || accounts.length === 0}
-              >
-                <SelectTrigger className="h-10 w-full rounded-xl">
-                  <SelectValue
-                    placeholder={accountsLoading ? "Loading accounts..." : "Select account"}
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {accounts.map((account) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      {accountLabel(account)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                placeholder={accountsLoading ? "Loading accounts..." : "Select account"}
+                modalTitle="Search Vendor / Customer"
+                searchPlaceholder="Search account by name, doc ID, phone, email, or tax ID"
+              />
             </Field>
 
             <Field label="Lot ID" required error={lookupError ?? undefined}>

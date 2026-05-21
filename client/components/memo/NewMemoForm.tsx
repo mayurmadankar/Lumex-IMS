@@ -18,6 +18,7 @@ import type { AccountListItem } from "@/api/services/account.service";
 import { getItems } from "@/api/services/item.service";
 import type { ItemListItem } from "@/api/services/item.service";
 import { createMemo } from "@/api/services/memo.service";
+import { AccountSearchPicker } from "@/components/common/account-search-picker";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  CURRENCY_OPTIONS,
+  DEFAULT_CURRENCY,
+  type CurrencyCode,
+} from "@/config/currencies";
+import { useFormDraft } from "@/hooks/use-form-draft";
 import { DEFAULT_PAGE_SIZE, usePagination } from "@/hooks/use-pagination";
 import { useAppSelector } from "@/store/hooks";
 import type { CompanyOption } from "@/store/types/types";
@@ -60,6 +67,41 @@ const paymentTermOptions = Array.from({ length: 15 }, (_, index) => {
   };
 });
 
+type MemoDraft = {
+  selectedAccountId: string;
+  paymentTerm: string;
+  currency: CurrencyCode;
+  docDate: string;
+  status: "ACTIVE" | "CANCELLED";
+  memoLines: MemoLine[];
+  nextLineId: number;
+};
+
+function defaultMemoDraft(): MemoDraft {
+  return {
+    selectedAccountId: "",
+    paymentTerm: "",
+    currency: DEFAULT_CURRENCY,
+    docDate: todayInputValue(),
+    status: "ACTIVE",
+    memoLines: [],
+    nextLineId: 1,
+  };
+}
+
+function normalizePaymentTerm(value: unknown) {
+  if (value === null || value === undefined || value === "" || value === NO_PAYMENT_TERM) {
+    return "";
+  }
+
+  const numericValue = Number(value);
+  if (!Number.isInteger(numericValue) || numericValue < 1 || numericValue > 15) {
+    return "";
+  }
+
+  return String(numericValue);
+}
+
 function isVendorAccount(account: AccountListItem) {
   return account.accountType.name.trim().toLowerCase() === "vendor";
 }
@@ -85,10 +127,6 @@ function emptyLine(lineId: number, departmentAccountName = ""): MemoLine {
     parcelOrStone: "STONE",
     departmentAccountName,
   };
-}
-
-function vendorLabel(account: AccountListItem) {
-  return `${account.accountName} (${account.accountIndex ?? "No docId"})`;
 }
 
 function vendorReferenceCode(account: AccountListItem | undefined) {
@@ -132,7 +170,7 @@ export default function NewMemoForm() {
   const [itemsError, setItemsError] = useState<string | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [paymentTerm, setPaymentTerm] = useState("");
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState<CurrencyCode>(DEFAULT_CURRENCY);
   const [docDate, setDocDate] = useState(todayInputValue());
   const [status, setStatus] = useState<"ACTIVE" | "CANCELLED">("ACTIVE");
   const [memoLines, setMemoLines] = useState<MemoLine[]>([]);
@@ -180,6 +218,61 @@ export default function NewMemoForm() {
   );
   const { paginatedItems: paginatedMemoLines, ...memoLinePagination } =
     usePagination(memoLines, DEFAULT_PAGE_SIZE, memoLines.length);
+  const draftKey =
+    selectedDepartmentId && currentCompany?.id
+      ? `ims:draft:memo-in:${selectedDepartmentId}:${currentCompany.id}`
+      : null;
+  const draftValues = useMemo<MemoDraft>(
+    () => ({
+      selectedAccountId,
+      paymentTerm,
+      currency,
+      docDate,
+      status,
+      memoLines,
+      nextLineId,
+    }),
+    [
+      currency,
+      docDate,
+      memoLines,
+      nextLineId,
+      paymentTerm,
+      selectedAccountId,
+      status,
+    ],
+  );
+  const draftMetadata = useMemo(
+    () => ({
+      title: "New Memo In",
+      subtitle:
+        selectedVendor?.accountName ??
+        (memoLines.length > 0 ? `${memoLines.length} line${memoLines.length === 1 ? "" : "s"}` : "Memo draft"),
+      href: "/user/memo-in/new-memo",
+    }),
+    [memoLines.length, selectedVendor?.accountName],
+  );
+  const { saveDraft: saveMemoDraft } = useFormDraft<MemoDraft>({
+    storageKey: draftKey,
+    values: draftValues,
+    metadata: draftMetadata,
+    getDefaultValues: defaultMemoDraft,
+    restore: (draft) => {
+      const lines = Array.isArray(draft.memoLines) ? draft.memoLines : [];
+      const fallbackLineId =
+        lines.reduce((max, line) => Math.max(max, Number(line.lineId) || 0), 0) +
+        1;
+      const restoredLineId = Number(draft.nextLineId);
+
+      setSelectedAccountId(draft.selectedAccountId ?? "");
+      setPaymentTerm(normalizePaymentTerm(draft.paymentTerm));
+      setCurrency(draft.currency ?? DEFAULT_CURRENCY);
+      setDocDate(draft.docDate ?? todayInputValue());
+      setStatus(draft.status ?? "ACTIVE");
+      setMemoLines(lines);
+      setNextLineId(restoredLineId > 0 ? restoredLineId : fallbackLineId);
+    },
+  });
 
   useEffect(() => {
     const loadVendorAccounts = async () => {
@@ -235,6 +328,12 @@ export default function NewMemoForm() {
 
     loadItems();
   }, [selectedDepartmentId]);
+
+  const handlePaymentTermChange = (value: string) => {
+    const nextPaymentTerm = normalizePaymentTerm(value);
+    setPaymentTerm(nextPaymentTerm);
+    saveMemoDraft({ ...draftValues, paymentTerm: nextPaymentTerm });
+  };
 
   const handleAddLine = () => {
     const lineId = nextLineId;
@@ -365,26 +464,17 @@ export default function NewMemoForm() {
 
           <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-6">
             <Field label="Vendor" required error={vendorsError ?? undefined}>
-              <Select
-                value={selectedAccountId || undefined}
-                onValueChange={setSelectedAccountId}
+              <AccountSearchPicker
+                value={selectedAccountId}
+                onChange={setSelectedAccountId}
+                options={vendorAccounts}
+                loading={vendorsLoading}
                 disabled={vendorsLoading || vendorAccounts.length === 0}
-              >
-                <SelectTrigger className="h-10 w-full rounded-xl xl:col-span-2">
-                  <SelectValue
-                    placeholder={
-                      vendorsLoading ? "Loading vendors..." : "Select vendor"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {vendorAccounts.map((account) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      {vendorLabel(account)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                placeholder={vendorsLoading ? "Loading vendors..." : "Select vendor"}
+                modalTitle="Search Vendor"
+                searchPlaceholder="Search vendor by name, doc ID, phone, email, or tax ID"
+                emptyMessage="No vendor accounts found."
+              />
             </Field>
 
             <Field label="Vendor DocID">
@@ -399,9 +489,7 @@ export default function NewMemoForm() {
             <Field label="Payment Term">
               <Select
                 value={paymentTerm || NO_PAYMENT_TERM}
-                onValueChange={(value) =>
-                  setPaymentTerm(value === NO_PAYMENT_TERM ? "" : value)
-                }
+                onValueChange={handlePaymentTermChange}
               >
                 <SelectTrigger className="h-10 w-full rounded-xl">
                   <SelectValue placeholder="Payment term" />
@@ -450,12 +538,19 @@ export default function NewMemoForm() {
             </Field>
 
             <Field label="Currency">
-              <Select value={currency} onValueChange={setCurrency}>
+              <Select
+                value={currency}
+                onValueChange={(value) => setCurrency(value as CurrencyCode)}
+              >
                 <SelectTrigger className="h-10 w-full rounded-xl">
                   <SelectValue placeholder="Currency" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="USD">USD</SelectItem>
+                  {CURRENCY_OPTIONS.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </Field>
@@ -724,13 +819,13 @@ export default function NewMemoForm() {
           <div className="grid gap-4 text-sm md:grid-cols-4">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                Doc Qty
+                Qty
               </p>
               <p className="mt-1 font-semibold">{totals.quantity}</p>
             </div>
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                Doc Weight
+                Weight
               </p>
               <p className="mt-1 font-semibold">{totals.weight.toFixed(4)}</p>
             </div>

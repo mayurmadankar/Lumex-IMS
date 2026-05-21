@@ -30,6 +30,11 @@ function formatNumber(value: number, digits = 2) {
   }).format(value);
 }
 
+function formatReferenceDocNo(value?: string | null) {
+  if (!value) return "-";
+  return value.replace(/^Purchase Return:\s*/i, "");
+}
+
 function sourceMemoLabel(note: PurchaseNoteListItem) {
   const sourceMemos = note.sourceMemos ?? [];
   if (sourceMemos.length === 0) return "-";
@@ -188,7 +193,7 @@ export default function PurchaseReturnListPage() {
                     <th className="px-3 py-3 font-medium">Company</th>
                     <th className="px-3 py-3 font-medium">Department</th>
                     <th className="px-3 py-3 font-medium">Performed By</th>
-                    <th className="px-3 py-3 font-medium">Doc Type</th>
+                    <th className="px-3 py-3 font-medium">Type</th>
                     <th className="px-3 py-3 font-medium">Open Date</th>
                     <th className="px-3 py-3 font-medium">Doc ID</th>
                     <th className="px-3 py-3 font-medium">Return No</th>
@@ -196,15 +201,15 @@ export default function PurchaseReturnListPage() {
                     <th className="px-3 py-3 font-medium">Reference Doc No</th>
                     <th className="px-3 py-3 font-medium">Source Memo</th>
                     <th className="px-3 py-3 text-right font-medium">
-                      Doc Qty
+                      Qty
                     </th>
                     <th className="px-3 py-3 text-right font-medium">
-                      Doc Weight
+                      Weight
                     </th>
                     <th className="px-3 py-3 text-right font-medium">
                       Return Total
                     </th>
-                    <th className="px-3 py-3 font-medium">Doc Status</th>
+                    <th className="px-3 py-3 font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -249,7 +254,7 @@ export default function PurchaseReturnListPage() {
                         {note.vendorAccount?.accountName ?? "-"}
                       </td>
                       <td className="px-3 py-3">
-                        {note.referenceDocNo ?? "-"}
+                        {formatReferenceDocNo(note.referenceDocNo)}
                       </td>
                       <td className="px-3 py-3">{sourceMemoLabel(note)}</td>
                       <td className="px-3 py-3 text-right">{note.docQty}</td>

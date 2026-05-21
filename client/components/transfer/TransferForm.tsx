@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useFormDraft } from "@/hooks/use-form-draft";
 
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
@@ -58,6 +59,26 @@ type TransferFormProps = {
   submitLabel?: string;
 };
 
+type TransferDraft = {
+  lotId: string;
+  toDepartmentId: string;
+  toUserId: string;
+  docDate: string;
+  referenceDocNo: string;
+  notes: string;
+};
+
+function defaultTransferDraft(): TransferDraft {
+  return {
+    lotId: "",
+    toDepartmentId: "",
+    toUserId: "",
+    docDate: todayInputValue(),
+    referenceDocNo: "",
+    notes: "",
+  };
+}
+
 export default function TransferForm({
   companyId,
   initialItem,
@@ -80,6 +101,43 @@ export default function TransferForm({
   const [referenceDocNo, setReferenceDocNo] = useState("");
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const draftKey = !initialItem && companyId ? `ims:draft:new-transfer:${companyId}` : null;
+  const draftValues = useMemo<TransferDraft>(
+    () => ({
+      lotId,
+      toDepartmentId,
+      toUserId,
+      docDate,
+      referenceDocNo,
+      notes,
+    }),
+    [docDate, lotId, notes, referenceDocNo, toDepartmentId, toUserId],
+  );
+  const draftMetadata = useMemo(
+    () => ({
+      title: "New Transfer",
+      subtitle: lotId ? `Lot ${lotId}` : "Transfer draft",
+      href: "/user/transfer/new-transfer",
+    }),
+    [lotId],
+  );
+
+  useFormDraft<TransferDraft>({
+    storageKey: draftKey,
+    values: draftValues,
+    metadata: draftMetadata,
+    getDefaultValues: defaultTransferDraft,
+    restore: (draft) => {
+      setLotId(draft.lotId ?? "");
+      setToDepartmentId(draft.toDepartmentId ?? "");
+      setToUserId(draft.toUserId ?? "");
+      setDocDate(draft.docDate ?? todayInputValue());
+      setReferenceDocNo(draft.referenceDocNo ?? "");
+      setNotes(draft.notes ?? "");
+      setInventoryItem(null);
+      setItemError(null);
+    },
+  });
 
   useEffect(() => {
     if (!initialItem) return;
@@ -123,7 +181,6 @@ export default function TransferForm({
     const loadUsers = async () => {
       try {
         setUsersLoading(true);
-        setToUserId("");
         const response = await getTransferDepartmentUsers("user", toDepartmentId);
         setUsers(response.data.users ?? []);
       } catch (error: unknown) {
@@ -174,8 +231,6 @@ export default function TransferForm({
         companyId,
       });
       setInventoryItem(response.data.inventoryItem ?? null);
-      setToDepartmentId("");
-      setToUserId("");
     } catch (error: unknown) {
       const apiError = error as { response?: { data?: { message?: string } } };
       setInventoryItem(null);
@@ -254,17 +309,6 @@ export default function TransferForm({
 
       toast.success(`Transfer created: ${response.data.transfer.transferNo}`);
       onTransferred?.(response.data.transfer);
-
-      if (!initialItem) {
-        setInventoryItem(null);
-        setLotId("");
-      }
-
-      setToDepartmentId("");
-      setToUserId("");
-      setReferenceDocNo("");
-      setNotes("");
-      setDocDate(todayInputValue());
     } catch (error: unknown) {
       const apiError = error as { response?: { data?: { message?: string } } };
       toast.error(
@@ -273,6 +317,11 @@ export default function TransferForm({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleDepartmentChange = (value: string) => {
+    setToDepartmentId(value);
+    setToUserId("");
   };
 
   return (
@@ -405,7 +454,7 @@ export default function TransferForm({
         <Field label="Transfer To Department" required>
           <Select
             value={toDepartmentId || undefined}
-            onValueChange={setToDepartmentId}
+            onValueChange={handleDepartmentChange}
             disabled={
               !inventoryItem ||
               departmentsLoading ||
