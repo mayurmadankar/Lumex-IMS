@@ -7,6 +7,8 @@ const DRAFT_REGISTRY_EVENT = "ims:draft-registry-changed";
 const DRAFT_REMOVED_EVENT = "ims:draft-removed";
 const ROUTE_TAB_STORAGE_KEY = "ims:route-tabs";
 const ROUTE_TAB_EVENT = "ims:route-tabs-changed";
+const CLIPBOARD_DRAFT_STORAGE_KEY = "ims:draft:clipboard";
+const CLIPBOARD_LAST_LOADED_STORAGE_KEY = "ims:clipboard:last-loaded";
 
 type DraftRecord<T> = {
   version: number;
@@ -124,11 +126,38 @@ function upsertDraftRegistryItem(item: DraftRegistryItem) {
   writeDraftRegistry(nextRegistry);
 }
 
+function removeClipboardDraftStorage() {
+  try {
+    window.localStorage.removeItem(CLIPBOARD_LAST_LOADED_STORAGE_KEY);
+    window.sessionStorage.removeItem(CLIPBOARD_DRAFT_STORAGE_KEY);
+    window.sessionStorage.removeItem(CLIPBOARD_LAST_LOADED_STORAGE_KEY);
+
+    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith(`${CLIPBOARD_DRAFT_STORAGE_KEY}:`)) {
+        window.localStorage.removeItem(key);
+      }
+    }
+
+    for (let index = window.sessionStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.sessionStorage.key(index);
+      if (key?.startsWith(`${CLIPBOARD_DRAFT_STORAGE_KEY}:`)) {
+        window.sessionStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // Best-effort cleanup only. The main draft key is still removed below.
+  }
+}
+
 function removeDraftRegistryItem(storageKey: string, notifyRemoved = true) {
   const registry = readDraftRegistry();
   const nextRegistry = registry.filter((draft) => draft.storageKey !== storageKey);
 
   window.localStorage.removeItem(storageKey);
+  if (storageKey === CLIPBOARD_DRAFT_STORAGE_KEY) {
+    removeClipboardDraftStorage();
+  }
   writeDraftRegistry(nextRegistry);
 
   if (notifyRemoved) {

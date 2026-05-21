@@ -1,5 +1,6 @@
 import {
   Building2,
+  ClipboardList,
   CreditCard,
   LayoutDashboard,
   Users,
@@ -7,7 +8,7 @@ import {
 } from "lucide-react";
 
 export type AdminModuleKey = "dashboard" | "companies" | "users" | "billing";
-export type UserModuleKey = "dashboard";
+export type UserModuleKey = "dashboard" | "clipboard";
 
 export type SidebarModuleItem = {
   key: AdminModuleKey | UserModuleKey;
@@ -25,5 +26,6 @@ export const ORG_ADMIN_MODULES: SidebarModuleItem[] = [
 
 export const USER_MODULES: SidebarModuleItem[] = [
   { key: "dashboard", title: "Dashboard", icon: LayoutDashboard, href: "/user" },
+  { key: "clipboard", title: "Clipboard", icon: ClipboardList, href: "/user/clipboard" },
 ];
 

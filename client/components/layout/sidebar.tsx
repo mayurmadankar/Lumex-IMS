@@ -25,6 +25,7 @@ function isActivePath(pathname: string, href: string) {
 
 const pathTitleOverrides: Record<string, string> = {
   "/user": "Dashboard",
+  "/user/clipboard": "Clipboard",
   "/user/accounting/accounts": "Accounts",
   "/user/accounting/new-account": "New Account",
   "/user/inventory/inventory-list": "Inventory List",
