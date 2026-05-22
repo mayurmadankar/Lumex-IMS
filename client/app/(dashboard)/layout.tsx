@@ -1,8 +1,9 @@
 "use client";
 
 import { Bell, Building, Check, ChevronDown, RefreshCw } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
+import { getCurrentSessionService } from "@/api/services/auth.service";
 import AuthGuard from "@/components/guards/auth-guard";
 import LogoutButton from "@/components/guards/logout";
 import AppSidebar from "@/components/layout/sidebar";
@@ -22,8 +23,9 @@ import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   setSelectedCompanyInAuth,
   setSelectedDepartmentInAuth,
+  updateUser,
 } from "@/store/slices/authSlice";
-import { setSelectedCompanyId } from "@/store/slices/companySlice";
+import { setAccessibleCompanies, setSelectedCompanyId } from "@/store/slices/companySlice";
 import { setPermissions } from "@/store/slices/permissionSlice";
 
 function CurrencyTicker() {
@@ -123,6 +125,7 @@ export default function DashboardLayout({
 }) {
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.auth.user);
+  const refreshedSessionRef = useRef(false);
 
   const isOrgAdmin = user?.role === "ORG_ADMIN";
   const departmentAccesses = useMemo(
@@ -138,6 +141,63 @@ export default function DashboardLayout({
       ) ?? null,
     [departmentAccesses, selectedDepartmentId],
   );
+
+  useEffect(() => {
+    if (!user || refreshedSessionRef.current) return;
+
+    refreshedSessionRef.current = true;
+    let cancelled = false;
+
+    const refreshSession = async () => {
+      try {
+        const response = await getCurrentSessionService();
+        if (cancelled) return;
+
+        const payload = response.data;
+        const freshUser = payload.user;
+        const departmentStillExists = freshUser.departmentAccesses.some(
+          (access) => access.departmentId === user.selectedDepartmentId,
+        );
+        const companyStillExists = payload.accessibleCompanies.some(
+          (company) => company.id === user.selectedCompanyId,
+        );
+        const nextSelectedDepartmentId = departmentStillExists
+          ? user.selectedDepartmentId
+          : freshUser.selectedDepartmentId;
+        const selectedAccess = freshUser.departmentAccesses.find(
+          (access) => access.departmentId === nextSelectedDepartmentId,
+        );
+        const nextSelectedCompanyId = companyStillExists
+          ? user.selectedCompanyId
+          : selectedAccess?.companyId ?? freshUser.selectedCompanyId;
+        const nextUser = {
+          ...freshUser,
+          selectedCompanyId: nextSelectedCompanyId,
+          selectedDepartmentId: nextSelectedDepartmentId,
+        };
+
+        dispatch(updateUser(nextUser));
+        dispatch(setAccessibleCompanies(payload.accessibleCompanies || []));
+        dispatch(setSelectedCompanyId(nextSelectedCompanyId));
+        dispatch(setSelectedCompanyInAuth(nextSelectedCompanyId));
+        dispatch(
+          setPermissions(
+            selectedAccess
+              ? permissionsToMap(selectedAccess.permissions)
+              : freshUser.permissions || {},
+          ),
+        );
+      } catch {
+        refreshedSessionRef.current = false;
+      }
+    };
+
+    refreshSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dispatch, user]);
 
   useEffect(() => {
     if (!user || isOrgAdmin || user.selectedDepartmentId || !departmentAccesses[0]) {

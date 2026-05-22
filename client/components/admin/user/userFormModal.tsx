@@ -9,6 +9,8 @@ import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Modal, { ModalBody, ModalFooter } from "@/components/ui/modal";
+import { buildDefaultPermissions } from "@/config/modules";
+import type { GroupPermission, PermissionLevel } from "@/config/modules";
 
 
 type User = {
@@ -30,6 +32,7 @@ type User = {
 
 type DepartmentAccess = {
   departmentId: string;
+  permissions: GroupPermission[];
 };
 
 type UserFormData = {
@@ -64,6 +67,24 @@ type ApiFormError = {
       error?: Record<string, string[]>;
     };
   };
+};
+
+const permissionLabels: Record<PermissionLevel, string> = {
+  NONE: "None",
+  READ_ONLY: "Read",
+  READ_WRITE: "Read write",
+};
+
+const buildPermissionsWithLevel = (permission: PermissionLevel): GroupPermission[] =>
+  buildDefaultPermissions().map((item) => ({ ...item, permission }));
+
+const summarizePermissions = (permissions?: GroupPermission[]) => {
+  if (!permissions?.length) return "None";
+
+  const first = permissions[0]?.permission ?? "NONE";
+  return permissions.every((item) => item.permission === first)
+    ? permissionLabels[first]
+    : "Mixed";
 };
 
 export function EditUserModal({ user, onClose, onUpdated }: { user: User | null; onClose: () => void; onUpdated: (updated: User) => void }) {
@@ -165,12 +186,15 @@ export function EditUserModal({ user, onClose, onUpdated }: { user: User | null;
 export function AddUserModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (user: User) => void }) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [deptCompanyFilter, setDeptCompanyFilter] = useState("");
+  const [departmentPermissionPreset, setDepartmentPermissionPreset] =
+    useState<PermissionLevel>("NONE");
 
   const {
     register,
     handleSubmit,
     reset,
     setError,
+    setValue,
     control,
     formState: { errors, isSubmitting },
   } = useForm<UserFormData>({
@@ -178,6 +202,8 @@ export function AddUserModal({ open, onClose, onCreated }: { open: boolean; onCl
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: "departmentAccesses" });
+  const selectedDepartmentAccesses =
+    useWatch({ control, name: "departmentAccesses" }) ?? [];
 
   useEffect(() => {
     const fetchCompanies = async () => {
@@ -192,13 +218,28 @@ export function AddUserModal({ open, onClose, onCreated }: { open: boolean; onCl
   const handleClose = () => {
     reset();
     setDeptCompanyFilter("");
+    setDepartmentPermissionPreset("NONE");
     onClose();
   };
   const filteredCompany = companies.find((c) => c.id === deptCompanyFilter);
 
   const addDepartmentAccess = (departmentId: string) => {
     if (fields.some((f) => f.departmentId === departmentId)) return;
-    append({ departmentId });
+    append({
+      departmentId,
+      permissions: buildPermissionsWithLevel(departmentPermissionPreset),
+    });
+  };
+
+  const setDepartmentPermission = (
+    index: number,
+    permission: PermissionLevel,
+  ) => {
+    setValue(
+      `departmentAccesses.${index}.permissions`,
+      buildPermissionsWithLevel(permission),
+      { shouldDirty: true },
+    );
   };
 
   const getDepartmentName = (departmentId: string) => {
@@ -259,10 +300,10 @@ export function AddUserModal({ open, onClose, onCreated }: { open: boolean; onCl
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-muted-foreground" />
               <p className="text-sm font-medium">Department Access</p>
-              <span className="text-xs text-muted-foreground">— permissions set after creation</span>
+              <span className="text-xs text-muted-foreground">- choose module access before creating</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3 md:grid-cols-[1fr_1fr_180px]">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Filter by Company</Label>
                 <select className="w-full rounded-xl border bg-background px-3 py-2 text-sm" value={deptCompanyFilter} onChange={(e) => setDeptCompanyFilter(e.target.value)}>
@@ -297,6 +338,20 @@ export function AddUserModal({ open, onClose, onCreated }: { open: boolean; onCl
                   )}
                 </select>
               </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Default Permission</Label>
+                <select
+                  className="w-full rounded-xl border bg-background px-3 py-2 text-sm"
+                  value={departmentPermissionPreset}
+                  onChange={(event) =>
+                    setDepartmentPermissionPreset(event.target.value as PermissionLevel)
+                  }
+                >
+                  <option value="NONE">None</option>
+                  <option value="READ_ONLY">Read</option>
+                  <option value="READ_WRITE">Read write</option>
+                </select>
+              </div>
             </div>
 
             {fields.length === 0 ? (
@@ -305,15 +360,40 @@ export function AddUserModal({ open, onClose, onCreated }: { open: boolean; onCl
               <div className="space-y-2">
                 {fields.map((field, index) => {
                   const { name, company } = getDepartmentName(field.departmentId);
+                  const currentPermission = summarizePermissions(
+                    selectedDepartmentAccesses[index]?.permissions,
+                  );
                   return (
-                    <div key={field.id} className="flex items-center justify-between rounded-xl border bg-muted/20 px-4 py-3">
+                    <div key={field.id} className="flex flex-col gap-3 rounded-xl border bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <p className="text-sm font-medium">{name}</p>
                         <p className="text-xs text-muted-foreground">{company}</p>
                       </div>
-                      <button type="button" onClick={() => remove(index)} className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-destructive transition">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <select
+                          className="h-8 rounded-lg border bg-background px-2 text-xs"
+                          value={
+                            currentPermission === "Read write"
+                              ? "READ_WRITE"
+                              : currentPermission === "Read"
+                                ? "READ_ONLY"
+                                : "NONE"
+                          }
+                          onChange={(event) =>
+                            setDepartmentPermission(
+                              index,
+                              event.target.value as PermissionLevel,
+                            )
+                          }
+                        >
+                          <option value="NONE">None</option>
+                          <option value="READ_ONLY">Read</option>
+                          <option value="READ_WRITE">Read write</option>
+                        </select>
+                        <button type="button" onClick={() => remove(index)} className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-destructive transition">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -322,7 +402,7 @@ export function AddUserModal({ open, onClose, onCreated }: { open: boolean; onCl
 
             {fields.length > 0 && (
               <p className="text-xs text-muted-foreground">
-                All modules default to <span className="font-medium">None</span> — set permissions from the user detail page.
+                The selected permission is applied to every module for that department. You can fine tune individual modules from the user detail page.
               </p>
             )}
           </div>

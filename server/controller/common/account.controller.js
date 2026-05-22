@@ -388,8 +388,24 @@ export const createAccount = async (req, res) => {
 };
 
 export const getAccounts = async (req, res) => {
-  const { accountTypeId, status, search } = req.query;
+  const { accountTypeId, status, search, departmentId, companyId } = req.query;
   const where = {};
+
+  if (departmentId) {
+    const department = await prisma.department.findUnique({
+      where: { id: String(departmentId) },
+      select: { id: true, companyId: true },
+    });
+
+    if (!department) return sendError(res, "Department not found", 404);
+    where.companyId = department.companyId;
+  } else if (companyId) {
+    where.companyId = String(companyId);
+  } else if (req.user.role !== "ORG_ADMIN") {
+    return sendError(res, "departmentId is required", 400, {
+      departmentId: ["Select a department"],
+    });
+  }
 
   if (status && ACCOUNT_STATUS.includes(String(status).toUpperCase())) {
     where.status = String(status).toUpperCase();

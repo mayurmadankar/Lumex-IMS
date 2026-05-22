@@ -28,6 +28,7 @@ const updateDepartmentPermissionsSchema = z.object({
 
 const addUserDepartmentSchema = z.object({
   departmentId: z.string({ required_error: "departmentId is required" }).uuid("Invalid department ID"),
+  permissions: z.array(permissionEntrySchema).optional(),
 });
 
 // const updateDepartmentSchema = createDepartmentSchema
@@ -108,7 +109,7 @@ export const addUserDepartment = async (req, res) => {
     return sendError(res, "Validation failed", 400, result.error.flatten().fieldErrors);
   }
 
-  const { departmentId } = result.data;
+  const { departmentId, permissions } = result.data;
 
   const [user, department] = await Promise.all([
     prisma.user.findUnique({
@@ -133,7 +134,7 @@ export const addUserDepartment = async (req, res) => {
     data: {
       userId,
       departmentId,
-      permissions: buildDefaultPermissions(),
+      permissions: permissions ? normalizePermissions(permissions) : buildDefaultPermissions(),
     },
     select: {
       id: true,

@@ -10,16 +10,15 @@ export default function NewMemoPage() {
     (state) => state.permission.permissions,
   );
   const departmentAccesses = user?.departmentAccesses ?? [];
-  const selectedDepartmentId =
-    user?.selectedDepartmentId ?? departmentAccesses[0]?.departmentId ?? null;
-  const selectedAccess =
-    departmentAccesses.find(
-      (access) => access.departmentId === selectedDepartmentId,
-    ) ?? departmentAccesses[0];
-  const permissionMap = selectedAccess
-    ? permissionsToMap(selectedAccess.permissions)
-    : persistedPermissions;
-  const canCreateMemo = permissionAllows(permissionMap.NEW_MEMO_IN, "READ_WRITE");
+  const canCreateInAssignedDepartment = departmentAccesses.some((access) =>
+    permissionAllows(
+      permissionsToMap(access.permissions).NEW_MEMO_IN,
+      "READ_WRITE",
+    ),
+  );
+  const canCreateMemo =
+    canCreateInAssignedDepartment ||
+    permissionAllows(persistedPermissions.NEW_MEMO_IN, "READ_WRITE");
 
   if (!canCreateMemo) {
     return (

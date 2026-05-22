@@ -43,8 +43,18 @@ export async function updateUser(id: string, payload: { email: string; isActive:
   return response.data;
 }
 
-export async function addUserDepartment(userId: string, departmentId: string) {
-  const response = await axiosInstance.post(`/api/admin/users/${userId}/departments`, { departmentId });
+export async function addUserDepartment(
+  userId: string,
+  departmentId: string,
+  permissions?: GroupPermission[],
+) {
+  const response = await axiosInstance.post(
+    `/api/admin/users/${userId}/departments`,
+    {
+      departmentId,
+      ...(permissions ? { permissions } : {}),
+    },
+  );
   return response.data;
 }
 

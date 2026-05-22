@@ -10,19 +10,15 @@ export default function NewPurchaseNotePage() {
     (state) => state.permission.permissions,
   );
   const departmentAccesses = user?.departmentAccesses ?? [];
-  const selectedDepartmentId =
-    user?.selectedDepartmentId ?? departmentAccesses[0]?.departmentId ?? null;
-  const selectedAccess =
-    departmentAccesses.find(
-      (access) => access.departmentId === selectedDepartmentId,
-    ) ?? departmentAccesses[0];
-  const permissionMap = selectedAccess
-    ? permissionsToMap(selectedAccess.permissions)
-    : persistedPermissions;
-  const canCreatePurchaseNote = permissionAllows(
-    permissionMap.NEW_PURCHASE_NOTE,
-    "READ_WRITE",
+  const canCreateInAssignedDepartment = departmentAccesses.some((access) =>
+    permissionAllows(
+      permissionsToMap(access.permissions).NEW_PURCHASE_NOTE,
+      "READ_WRITE",
+    ),
   );
+  const canCreatePurchaseNote =
+    canCreateInAssignedDepartment ||
+    permissionAllows(persistedPermissions.NEW_PURCHASE_NOTE, "READ_WRITE");
 
   if (!canCreatePurchaseNote) {
     return (

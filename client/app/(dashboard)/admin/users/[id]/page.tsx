@@ -43,6 +43,9 @@ const parsePermissions = (raw: unknown): ModulePermission[] => {
   return normalized.length ? normalized : buildDefaultPermissions();
 };
 
+const buildPermissionsWithLevel = (permission: PermissionValue): ModulePermission[] =>
+  buildDefaultPermissions().map((item) => ({ ...item, permission }));
+
 function InfoItem({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string }) {
   return (
     <div className="flex items-start gap-3">
@@ -258,6 +261,8 @@ export default function UserDetailsPage() {
   const [showDeptPanel, setShowDeptPanel] = useState(false);
   const [pendingDept, setPendingDept] = useState<Department | null>(null);
   const [pendingRemoveDeptId, setPendingRemoveDeptId] = useState<string | null>(null);
+  const [newDepartmentPermission, setNewDepartmentPermission] =
+    useState<PermissionValue>("NONE");
   const [isAdding, setIsAdding] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
 
@@ -313,7 +318,11 @@ export default function UserDetailsPage() {
     if (!user || !pendingDept) return;
     try {
       setIsAdding(true);
-      const res = await addUserDepartment(user.id, pendingDept.id);
+      const res = await addUserDepartment(
+        user.id,
+        pendingDept.id,
+        buildPermissionsWithLevel(newDepartmentPermission),
+      );
       setUser((prev) =>
         prev
           ? {
@@ -424,9 +433,19 @@ export default function UserDetailsPage() {
                 ) : (
                   <div className="flex flex-col gap-2">
                     {user.departmentAccesses.map((access) => (
-                      <div key={access.id} className="flex items-center justify-between">
-                        <span className="text-xs font-medium">{access.department.name}</span>
-                        <span className="text-xs text-muted-foreground">{access.department.company.name}</span>
+                      <div key={access.id} className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-medium">{access.department.name}</p>
+                          <p className="truncate text-xs text-muted-foreground">{access.department.company.name}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPendingRemoveDeptId(access.department.id)}
+                          className="rounded-lg border border-destructive/30 p-1 text-destructive transition hover:bg-destructive/10"
+                          title="Remove department"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -468,6 +487,20 @@ export default function UserDetailsPage() {
                         {c.name}
                       </option>
                     ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Permission for new department</Label>
+                  <select
+                    className="w-full rounded-xl border bg-background px-3 py-2 text-sm"
+                    value={newDepartmentPermission}
+                    onChange={(event) =>
+                      setNewDepartmentPermission(event.target.value as PermissionValue)
+                    }
+                  >
+                    <option value="NONE">None</option>
+                    <option value="READ_ONLY">Read</option>
+                    <option value="READ_WRITE">Read write</option>
                   </select>
                 </div>
                 <div className="space-y-3">
@@ -540,7 +573,7 @@ export default function UserDetailsPage() {
       <ConfirmDialog
         open={!!pendingDept}
         title="Add Department"
-        description={`Are you sure you want to add ${user.fullName} to "${pendingDept?.name}"? All module permissions will default to None — you can update them after.`}
+        description={`Are you sure you want to add ${user.fullName} to "${pendingDept?.name}"? All modules will be set to ${newDepartmentPermission === "READ_WRITE" ? "Read write" : newDepartmentPermission === "READ_ONLY" ? "Read" : "None"}.`}
         onConfirm={handleConfirmAdd}
         onCancel={() => setPendingDept(null)}
         isLoading={isAdding}

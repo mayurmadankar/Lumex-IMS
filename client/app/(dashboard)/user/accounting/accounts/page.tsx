@@ -249,7 +249,7 @@ export default function AccountListPage() {
               Account List
             </h1>
             <p className="text-sm text-muted-foreground">
-              Global account master across all companies and departments.
+              Accounts available for the selected department company.
             </p>
           </div>
 

@@ -1,10 +1,14 @@
 "use client";
 
-import { ArrowLeft, KeyRound } from "lucide-react";
+import { ArrowLeft, KeyRound, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
+import toast from "react-hot-toast";
 
+import { forgotPasswordService } from "@/api/services/auth.service";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,8 +18,24 @@ type ForgotPasswordFormValues = {
   email: string;
 };
 
+type ApiError = {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+  message?: string;
+};
+
+const getErrorMessage = (error: unknown) => {
+  const apiError = error as ApiError;
+  return apiError?.response?.data?.message || apiError?.message || "Unable to send reset OTP.";
+};
+
 export default function ForgotPasswordPage() {
   const router = useRouter();
+  const [statusMessage, setStatusMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const {
     register,
@@ -25,8 +45,20 @@ export default function ForgotPasswordPage() {
     defaultValues: { email: "" },
   });
 
-  const onSubmit = (data: ForgotPasswordFormValues) => {
-    router.push(`/reset-password?email=${encodeURIComponent(data.email)}`);
+  const onSubmit = async (data: ForgotPasswordFormValues) => {
+    const email = data.email.trim().toLowerCase();
+
+    try {
+      setIsSubmitting(true);
+      const response = await forgotPasswordService({ email });
+      setStatusMessage(response.message);
+      toast.success("OTP sent if the email exists.");
+      router.push(`/reset-password?email=${encodeURIComponent(email)}`);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -39,7 +71,7 @@ export default function ForgotPasswordPage() {
           <div>
             <CardTitle className="text-2xl">Forgot Password</CardTitle>
             <CardDescription className="mt-1">
-              Enter your email to continue to password reset
+              Enter your email to receive a password reset OTP
             </CardDescription>
           </div>
         </CardHeader>
@@ -61,16 +93,26 @@ export default function ForgotPasswordPage() {
                   },
                 })}
               />
-              {errors.email && (
-                <p className="text-xs text-destructive">{errors.email.message}</p>
-              )}
+              {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
             </div>
 
-            <Button type="submit" className="h-11 w-full rounded-xl">
-              Continue
+            {statusMessage && (
+              <Alert className="rounded-xl">
+                <AlertDescription>{statusMessage}</AlertDescription>
+              </Alert>
+            )}
+
+            <Button type="submit" className="h-11 w-full rounded-xl" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Sending OTP...
+                </>
+              ) : (
+                "Send OTP"
+              )}
             </Button>
 
-            {/* Link replaces router.push — it's pure navigation, no action involved */}
             <Button asChild variant="ghost" className="h-11 w-full rounded-xl">
               <Link href="/login">
                 <ArrowLeft className="mr-2 h-4 w-4" />

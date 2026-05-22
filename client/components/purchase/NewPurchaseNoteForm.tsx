@@ -35,10 +35,11 @@ import {
   DEFAULT_CURRENCY,
   type CurrencyCode,
 } from "@/config/currencies";
+import { permissionAllows, permissionsToMap } from "@/config/modules";
 import { useFormDraft } from "@/hooks/use-form-draft";
 import { DEFAULT_PAGE_SIZE, usePagination } from "@/hooks/use-pagination";
 import { useAppSelector } from "@/store/hooks";
-import type { CompanyOption } from "@/store/types/types";
+import type { CompanyOption, DepartmentAccessOption } from "@/store/types/types";
 
 type PurchaseFrom = "LOCAL_PURCHASE" | "IMPORT_PURCHASE" | "INTERNAL_PURCHASE";
 type ParcelOrStone = "PARCEL" | "STONE";
@@ -151,6 +152,21 @@ function companyLabel(company: CompanyOption) {
   return company.code ? `${company.name} (${company.code})` : company.name;
 }
 
+function departmentOptionLabel(access: DepartmentAccessOption) {
+  const company = access.companyCode
+    ? `${access.companyName} (${access.companyCode})`
+    : access.companyName;
+  return `${company} - ${access.departmentName}`;
+}
+
+function accessAllows(
+  access: DepartmentAccessOption,
+  module: "NEW_PURCHASE_NOTE" | "ITEM_LIST" | "ACCOUNT_LIST",
+  required: "READ_ONLY" | "READ_WRITE",
+) {
+  return permissionAllows(permissionsToMap(access.permissions)[module], required);
+}
+
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -181,12 +197,34 @@ export default function NewPurchaseNoteForm() {
     (state) => state.company.selectedCompanyId ?? state.auth.user?.selectedCompanyId,
   );
   const departmentAccesses = user?.departmentAccesses ?? [];
-  const selectedDepartmentId =
-    user?.selectedDepartmentId ?? departmentAccesses[0]?.departmentId ?? null;
+  const purchaseDepartmentOptions = useMemo(() => {
+    const allowedAccesses = departmentAccesses.filter((access) =>
+      accessAllows(access, "NEW_PURCHASE_NOTE", "READ_WRITE"),
+    );
+    const companyAllowedAccesses = allowedAccesses.filter(
+      (access) => !selectedCompanyId || access.companyId === selectedCompanyId,
+    );
+
+    return companyAllowedAccesses.length > 0
+      ? companyAllowedAccesses
+      : allowedAccesses;
+  }, [departmentAccesses, selectedCompanyId]);
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState("");
   const selectedAccess =
-    departmentAccesses.find(
+    purchaseDepartmentOptions.find(
       (access) => access.departmentId === selectedDepartmentId,
-    ) ?? departmentAccesses[0];
+    ) ?? purchaseDepartmentOptions[0];
+  const selectedPermissionMap = selectedAccess
+    ? permissionsToMap(selectedAccess.permissions)
+    : ({} as ReturnType<typeof permissionsToMap>);
+  const canReadAccounts = permissionAllows(
+    selectedPermissionMap.ACCOUNT_LIST,
+    "READ_ONLY",
+  );
+  const canReadItems = permissionAllows(
+    selectedPermissionMap.ITEM_LIST,
+    "READ_ONLY",
+  );
 
   const [vendorAccounts, setVendorAccounts] = useState<AccountListItem[]>([]);
   const [items, setItems] = useState<ItemListItem[]>([]);
@@ -207,8 +245,27 @@ export default function NewPurchaseNoteForm() {
   const [nextLineId, setNextLineId] = useState(1);
   const [isCreating, setIsCreating] = useState(false);
 
+  useEffect(() => {
+    const preferredDepartmentId = user?.selectedDepartmentId ?? "";
+    const preferredDepartment = purchaseDepartmentOptions.find(
+      (access) => access.departmentId === preferredDepartmentId,
+    );
+    const fallbackDepartmentId =
+      preferredDepartment?.departmentId ??
+      purchaseDepartmentOptions[0]?.departmentId ??
+      "";
+
+    setSelectedDepartmentId((currentDepartmentId) =>
+      purchaseDepartmentOptions.some(
+        (access) => access.departmentId === currentDepartmentId,
+      )
+        ? currentDepartmentId
+        : fallbackDepartmentId,
+    );
+  }, [purchaseDepartmentOptions, user?.selectedDepartmentId]);
+
   const currentCompany = useMemo(() => {
-    if (!selectedCompanyId && selectedAccess) {
+    if (selectedAccess) {
       return {
         id: selectedAccess.companyId,
         name: selectedAccess.companyName,
@@ -219,14 +276,7 @@ export default function NewPurchaseNoteForm() {
 
     return (
       accessibleCompanies.find((company) => company.id === selectedCompanyId) ??
-      (selectedAccess
-        ? {
-            id: selectedAccess.companyId,
-            name: selectedAccess.companyName,
-            code: selectedAccess.companyCode,
-            status: selectedAccess.companyStatus,
-          }
-        : null)
+      null
     );
   }, [accessibleCompanies, selectedAccess, selectedCompanyId]);
 
@@ -356,6 +406,13 @@ export default function NewPurchaseNoteForm() {
         return;
       }
 
+      if (!canReadAccounts) {
+        setVendorAccounts([]);
+        setVendorsLoading(false);
+        setVendorsError("Account List read permission is required to select a vendor.");
+        return;
+      }
+
       try {
         setVendorsLoading(true);
         setVendorsError(null);
@@ -373,7 +430,7 @@ export default function NewPurchaseNoteForm() {
     };
 
     loadVendorAccounts();
-  }, [selectedDepartmentId]);
+  }, [canReadAccounts, selectedDepartmentId]);
 
   useEffect(() => {
     const loadItems = async () => {
@@ -381,6 +438,13 @@ export default function NewPurchaseNoteForm() {
         setItems([]);
         setItemsLoading(false);
         setItemsError("Select a department before creating a purchase note.");
+        return;
+      }
+
+      if (!canReadItems) {
+        setItems([]);
+        setItemsLoading(false);
+        setItemsError("Item List read permission is required to select items.");
         return;
       }
 
@@ -400,7 +464,7 @@ export default function NewPurchaseNoteForm() {
     };
 
     loadItems();
-  }, [selectedDepartmentId]);
+  }, [canReadItems, selectedDepartmentId]);
 
   const handlePurchaseFromChange = (value: string) => {
     setPurchaseFrom(normalizePurchaseFrom(value as PurchaseFrom));
@@ -410,6 +474,16 @@ export default function NewPurchaseNoteForm() {
     setSelectedAccountId(value);
   };
 
+  const handleDepartmentChange = (departmentId: string) => {
+    if (departmentId === selectedDepartmentId) return;
+
+    setSelectedDepartmentId(departmentId);
+    setSelectedAccountId("");
+    setLocalPurchaseItems([]);
+    setNextLineId(1);
+    localPurchaseItemPagination.setPage(1);
+  };
+
   const handlePaymentTermChange = (value: string) => {
     const nextPaymentTerm = normalizePaymentTerm(value);
     setPaymentTerm(nextPaymentTerm);
@@ -417,6 +491,26 @@ export default function NewPurchaseNoteForm() {
   };
 
   const handleInsertLocalProduct = () => {
+    if (!selectedDepartmentId) {
+      toast.error("Select a department before adding a line.");
+      return;
+    }
+
+    if (!canReadItems) {
+      toast.error("Item List read permission is required to select items.");
+      return;
+    }
+
+    if (itemsLoading) {
+      toast.error("Items are still loading.");
+      return;
+    }
+
+    if (items.length === 0) {
+      toast.error("No items available for this department company.");
+      return;
+    }
+
     const lineId = nextLineId;
     const nextLength = localPurchaseItems.length + 1;
 
@@ -464,6 +558,16 @@ export default function NewPurchaseNoteForm() {
 
     if (!selectedDepartmentId) {
       toast.error("Select a department before creating a purchase.");
+      return;
+    }
+
+    if (!canReadAccounts) {
+      toast.error("Account List read permission is required to select a vendor.");
+      return;
+    }
+
+    if (!canReadItems) {
+      toast.error("Item List read permission is required to select items.");
       return;
     }
 
@@ -687,12 +791,34 @@ export default function NewPurchaseNoteForm() {
               </Select>
             </Field>
 
-            <Field label="Department">
-              <Input
-                value={selectedAccess?.departmentName ?? ""}
-                readOnly
-                className="h-10 rounded-xl bg-muted"
-              />
+            <Field label="Department" required>
+              {purchaseDepartmentOptions.length > 1 ? (
+                <Select
+                  value={selectedDepartmentId || undefined}
+                  onValueChange={handleDepartmentChange}
+                >
+                  <SelectTrigger className="h-10 w-full rounded-xl">
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {purchaseDepartmentOptions.map((access) => (
+                      <SelectItem key={access.id} value={access.departmentId}>
+                        {departmentOptionLabel(access)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={
+                    selectedAccess
+                      ? departmentOptionLabel(selectedAccess)
+                      : "No permitted department"
+                  }
+                  readOnly
+                  className="h-10 rounded-xl bg-muted"
+                />
+              )}
             </Field>
 
             <Field label="Doc Date">
@@ -807,11 +933,22 @@ export default function NewPurchaseNoteForm() {
                 variant="outline"
                 className="h-9 rounded-xl"
                 onClick={handleInsertLocalProduct}
+                disabled={!selectedDepartmentId || !canReadItems || itemsLoading || items.length === 0}
               >
                 <Plus className="h-4 w-4" />
                 Add Line
               </Button>
             </div>
+
+            {(vendorsError || itemsError || (!itemsLoading && items.length === 0)) && (
+              <div className="border-b bg-muted/20 px-5 py-3 text-xs text-muted-foreground">
+                {vendorsError ? <p>{vendorsError}</p> : null}
+                {itemsError ? <p>{itemsError}</p> : null}
+                {!itemsLoading && items.length === 0 && !itemsError ? (
+                  <p>No item master records found for this department company.</p>
+                ) : null}
+              </div>
+            )}
 
             {localPurchaseItems.length === 0 ? (
               <div className="px-5 py-16 text-center text-sm text-muted-foreground">

@@ -35,10 +35,11 @@ import {
   DEFAULT_CURRENCY,
   type CurrencyCode,
 } from "@/config/currencies";
+import { permissionAllows, permissionsToMap } from "@/config/modules";
 import { useFormDraft } from "@/hooks/use-form-draft";
 import { DEFAULT_PAGE_SIZE, usePagination } from "@/hooks/use-pagination";
 import { useAppSelector } from "@/store/hooks";
-import type { CompanyOption } from "@/store/types/types";
+import type { CompanyOption, DepartmentAccessOption } from "@/store/types/types";
 
 type ParcelOrStone = "PARCEL" | "STONE";
 
@@ -110,6 +111,21 @@ function companyLabel(company: CompanyOption) {
   return company.code ? `${company.name} (${company.code})` : company.name;
 }
 
+function departmentOptionLabel(access: DepartmentAccessOption) {
+  const company = access.companyCode
+    ? `${access.companyName} (${access.companyCode})`
+    : access.companyName;
+  return `${company} - ${access.departmentName}`;
+}
+
+function accessAllows(
+  access: DepartmentAccessOption,
+  module: "NEW_MEMO_IN" | "ITEM_LIST" | "ACCOUNT_LIST",
+  required: "READ_ONLY" | "READ_WRITE",
+) {
+  return permissionAllows(permissionsToMap(access.permissions)[module], required);
+}
+
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -155,12 +171,34 @@ export default function NewMemoForm() {
     (state) => state.company.selectedCompanyId ?? state.auth.user?.selectedCompanyId,
   );
   const departmentAccesses = user?.departmentAccesses ?? [];
-  const selectedDepartmentId =
-    user?.selectedDepartmentId ?? departmentAccesses[0]?.departmentId ?? null;
+  const memoDepartmentOptions = useMemo(() => {
+    const allowedAccesses = departmentAccesses.filter((access) =>
+      accessAllows(access, "NEW_MEMO_IN", "READ_WRITE"),
+    );
+    const companyAllowedAccesses = allowedAccesses.filter(
+      (access) => !selectedCompanyId || access.companyId === selectedCompanyId,
+    );
+
+    return companyAllowedAccesses.length > 0
+      ? companyAllowedAccesses
+      : allowedAccesses;
+  }, [departmentAccesses, selectedCompanyId]);
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState("");
   const selectedAccess =
-    departmentAccesses.find(
+    memoDepartmentOptions.find(
       (access) => access.departmentId === selectedDepartmentId,
-    ) ?? departmentAccesses[0];
+    ) ?? memoDepartmentOptions[0];
+  const selectedPermissionMap = selectedAccess
+    ? permissionsToMap(selectedAccess.permissions)
+    : ({} as ReturnType<typeof permissionsToMap>);
+  const canReadAccounts = permissionAllows(
+    selectedPermissionMap.ACCOUNT_LIST,
+    "READ_ONLY",
+  );
+  const canReadItems = permissionAllows(
+    selectedPermissionMap.ITEM_LIST,
+    "READ_ONLY",
+  );
 
   const [vendorAccounts, setVendorAccounts] = useState<AccountListItem[]>([]);
   const [items, setItems] = useState<ItemListItem[]>([]);
@@ -177,8 +215,27 @@ export default function NewMemoForm() {
   const [nextLineId, setNextLineId] = useState(1);
   const [isSaving, setIsSaving] = useState(false);
 
+  useEffect(() => {
+    const preferredDepartmentId = user?.selectedDepartmentId ?? "";
+    const preferredDepartment = memoDepartmentOptions.find(
+      (access) => access.departmentId === preferredDepartmentId,
+    );
+    const fallbackDepartmentId =
+      preferredDepartment?.departmentId ??
+      memoDepartmentOptions[0]?.departmentId ??
+      "";
+
+    setSelectedDepartmentId((currentDepartmentId) =>
+      memoDepartmentOptions.some(
+        (access) => access.departmentId === currentDepartmentId,
+      )
+        ? currentDepartmentId
+        : fallbackDepartmentId,
+    );
+  }, [memoDepartmentOptions, user?.selectedDepartmentId]);
+
   const currentCompany = useMemo(() => {
-    if (!selectedCompanyId && selectedAccess) {
+    if (selectedAccess) {
       return {
         id: selectedAccess.companyId,
         name: selectedAccess.companyName,
@@ -189,14 +246,7 @@ export default function NewMemoForm() {
 
     return (
       accessibleCompanies.find((company) => company.id === selectedCompanyId) ??
-      (selectedAccess
-        ? {
-            id: selectedAccess.companyId,
-            name: selectedAccess.companyName,
-            code: selectedAccess.companyCode,
-            status: selectedAccess.companyStatus,
-          }
-        : null)
+      null
     );
   }, [accessibleCompanies, selectedAccess, selectedCompanyId]);
 
@@ -283,6 +333,13 @@ export default function NewMemoForm() {
         return;
       }
 
+      if (!canReadAccounts) {
+        setVendorAccounts([]);
+        setVendorsLoading(false);
+        setVendorsError("Account List read permission is required to select a vendor.");
+        return;
+      }
+
       try {
         setVendorsLoading(true);
         setVendorsError(null);
@@ -300,7 +357,7 @@ export default function NewMemoForm() {
     };
 
     loadVendorAccounts();
-  }, [selectedDepartmentId]);
+  }, [canReadAccounts, selectedDepartmentId]);
 
   useEffect(() => {
     const loadItems = async () => {
@@ -308,6 +365,13 @@ export default function NewMemoForm() {
         setItems([]);
         setItemsLoading(false);
         setItemsError("Select a department before creating a memo.");
+        return;
+      }
+
+      if (!canReadItems) {
+        setItems([]);
+        setItemsLoading(false);
+        setItemsError("Item List read permission is required to select items.");
         return;
       }
 
@@ -327,7 +391,7 @@ export default function NewMemoForm() {
     };
 
     loadItems();
-  }, [selectedDepartmentId]);
+  }, [canReadItems, selectedDepartmentId]);
 
   const handlePaymentTermChange = (value: string) => {
     const nextPaymentTerm = normalizePaymentTerm(value);
@@ -335,7 +399,37 @@ export default function NewMemoForm() {
     saveMemoDraft({ ...draftValues, paymentTerm: nextPaymentTerm });
   };
 
+  const handleDepartmentChange = (departmentId: string) => {
+    if (departmentId === selectedDepartmentId) return;
+
+    setSelectedDepartmentId(departmentId);
+    setSelectedAccountId("");
+    setMemoLines([]);
+    setNextLineId(1);
+    memoLinePagination.setPage(1);
+  };
+
   const handleAddLine = () => {
+    if (!selectedDepartmentId) {
+      toast.error("Select a department before adding a line.");
+      return;
+    }
+
+    if (!canReadItems) {
+      toast.error("Item List read permission is required to select items.");
+      return;
+    }
+
+    if (itemsLoading) {
+      toast.error("Items are still loading.");
+      return;
+    }
+
+    if (items.length === 0) {
+      toast.error("No items available for this department company.");
+      return;
+    }
+
     const lineId = nextLineId;
     setMemoLines((lines) => [
       ...lines,
@@ -361,6 +455,16 @@ export default function NewMemoForm() {
 
     if (!selectedDepartmentId) {
       toast.error("Select a department before saving a memo.");
+      return;
+    }
+
+    if (!canReadAccounts) {
+      toast.error("Account List read permission is required to select a vendor.");
+      return;
+    }
+
+    if (!canReadItems) {
+      toast.error("Item List read permission is required to select items.");
       return;
     }
 
@@ -505,12 +609,34 @@ export default function NewMemoForm() {
               </Select>
             </Field>
 
-            <Field label="Department">
-              <Input
-                value={selectedAccess?.departmentName ?? ""}
-                readOnly
-                className="h-10 rounded-xl bg-muted"
-              />
+            <Field label="Department" required>
+              {memoDepartmentOptions.length > 1 ? (
+                <Select
+                  value={selectedDepartmentId || undefined}
+                  onValueChange={handleDepartmentChange}
+                >
+                  <SelectTrigger className="h-10 w-full rounded-xl">
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {memoDepartmentOptions.map((access) => (
+                      <SelectItem key={access.id} value={access.departmentId}>
+                        {departmentOptionLabel(access)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={
+                    selectedAccess
+                      ? departmentOptionLabel(selectedAccess)
+                      : "No permitted department"
+                  }
+                  readOnly
+                  className="h-10 rounded-xl bg-muted"
+                />
+              )}
             </Field>
 
             <Field label="Doc Date">
@@ -625,11 +751,22 @@ export default function NewMemoForm() {
               variant="outline"
               className="h-9 rounded-xl"
               onClick={handleAddLine}
+              disabled={!selectedDepartmentId || !canReadItems || itemsLoading || items.length === 0}
             >
               <Plus className="h-4 w-4" />
               Add Line
             </Button>
           </div>
+
+          {(vendorsError || itemsError || (!itemsLoading && items.length === 0)) && (
+            <div className="border-b bg-muted/20 px-5 py-3 text-xs text-muted-foreground">
+              {vendorsError ? <p>{vendorsError}</p> : null}
+              {itemsError ? <p>{itemsError}</p> : null}
+              {!itemsLoading && items.length === 0 && !itemsError ? (
+                <p>No item master records found for this department company.</p>
+              ) : null}
+            </div>
+          )}
 
           {memoLines.length === 0 ? (
             <div className="px-5 py-16 text-center text-sm text-muted-foreground">
