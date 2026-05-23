@@ -50,9 +50,8 @@ function sourceDocument(item: InvoiceItem) {
 }
 
 function sourceDocumentId(item: InvoiceItem) {
+  if (item.inventoryItem?.docId) return item.inventoryItem.docId;
   if (item.sourceDocId) return item.sourceDocId;
-  if (item.inventoryItem?.purchaseNote) return item.inventoryItem.purchaseNote.docId;
-  if (item.inventoryItem?.memo) return item.inventoryItem.memo.docId;
   return "-";
 }
 
@@ -196,7 +195,7 @@ export default function InvoiceDetailPage() {
                     <th className="px-3 py-3 text-right font-medium">Qty</th>
                     <th className="px-3 py-3 text-right font-medium">Weight</th>
                     <th className="px-3 py-3 font-medium">Certificate No</th>
-                    <th className="px-3 py-3 font-medium">Source Doc ID</th>
+                    <th className="px-3 py-3 font-medium">Doc ID</th>
                     <th className="px-3 py-3 font-medium">Source Doc No</th>
                     <th className="px-3 py-3 text-right font-medium">Unit Price</th>
                     <th className="px-3 py-3 text-right font-medium">Total Amount</th>

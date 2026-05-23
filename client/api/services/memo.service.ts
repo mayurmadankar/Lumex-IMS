@@ -130,6 +130,7 @@ export type MemoOriginDocument =
 export type MemoInventoryItem = {
   id: string;
   itemId: string;
+  docId: number;
   lotId: number;
   itemType?: string;
   itemMaster?: {

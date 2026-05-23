@@ -85,6 +85,7 @@ export type InvoiceItem = {
   inventoryItem?: {
     id: string;
     itemId: string;
+    docId: number;
     lotId: number;
     lotName: string;
     status: LotStatus;

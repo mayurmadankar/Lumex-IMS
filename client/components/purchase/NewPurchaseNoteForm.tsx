@@ -187,6 +187,10 @@ function formatAmount(value: number) {
   return value.toFixed(2);
 }
 
+function hasCertificateNo(value: unknown) {
+  return String(value ?? "").trim().length > 0;
+}
+
 export default function NewPurchaseNoteForm() {
   const router = useRouter();
   const user = useAppSelector((state) => state.auth.user);
@@ -383,7 +387,13 @@ export default function NewPurchaseNoteForm() {
     setCurrency(normalizeCurrency(draft.currency));
     setDocDate(draft.docDate ?? todayInputValue());
     setStatus(normalizePurchaseStatus(draft.status));
-    setLocalPurchaseItems(lines);
+    setLocalPurchaseItems(
+      lines.map((item) => ({
+        ...item,
+        quantity: hasCertificateNo(item.certificateNo) ? "1" : item.quantity,
+        parcelOrStone: "STONE",
+      })),
+    );
     setNextLineId(restoredLineId > 0 ? restoredLineId : fallbackLineId);
     localPurchaseItemPagination.setPage(
       Math.max(1, Math.ceil(lines.length / DEFAULT_PAGE_SIZE)),
@@ -541,9 +551,28 @@ export default function NewPurchaseNoteForm() {
     value: string,
   ) => {
     setLocalPurchaseItems((items) =>
-      items.map((item) =>
-        item.lineId === lineId ? { ...item, [field]: value } : item,
-      ),
+      items.map((item) => {
+        if (item.lineId !== lineId) return item;
+
+        if (field === "quantity" && hasCertificateNo(item.certificateNo)) {
+          return { ...item, quantity: "1" };
+        }
+
+        if (field === "certificateNo") {
+          return {
+            ...item,
+            certificateNo: value,
+            quantity: hasCertificateNo(value) ? "1" : item.quantity,
+            parcelOrStone: "STONE",
+          };
+        }
+
+        if (field === "parcelOrStone") {
+          return { ...item, parcelOrStone: "STONE" };
+        }
+
+        return { ...item, [field]: value };
+      }),
     );
   };
 
@@ -604,6 +633,17 @@ export default function NewPurchaseNoteForm() {
 
     if (incompleteItem) {
       toast.error(`Complete product details for Line ${incompleteItem.lineId}.`);
+      return;
+    }
+
+    const invalidCertifiedQuantityItem = localPurchaseItems.find(
+      (item) => hasCertificateNo(item.certificateNo) && Number(item.quantity) !== 1,
+    );
+
+    if (invalidCertifiedQuantityItem) {
+      toast.error(
+        `Certificate item on Line ${invalidCertifiedQuantityItem.lineId} must have Qty 1.`,
+      );
       return;
     }
 
@@ -1026,7 +1066,6 @@ export default function NewPurchaseNoteForm() {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="STONE">Stone</SelectItem>
-                            <SelectItem value="PARCEL">Parcel</SelectItem>
                           </SelectContent>
                         </Select>
                       </Field>
@@ -1083,7 +1122,10 @@ export default function NewPurchaseNoteForm() {
                               event.target.value,
                             )
                           }
-                          className="h-10 rounded-xl"
+                          readOnly={hasCertificateNo(item.certificateNo)}
+                          className={`h-10 rounded-xl ${
+                            hasCertificateNo(item.certificateNo) ? "bg-muted" : ""
+                          }`}
                         />
                       </Field>
 

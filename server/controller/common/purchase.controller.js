@@ -43,22 +43,40 @@ const numericString = (fieldName) =>
     z.string().regex(/^\d+$/, `${fieldName} must be a number`),
   );
 
-const purchaseItemSchema = z.object({
-  itemMasterId: z.string({ required_error: "Select an item" }).uuid("Select an item"),
-  lotName: z.string({ required_error: "Lot name is required" }).trim().min(1, "Lot name is required"),
-  quantity: z.coerce.number().int().positive("Quantity must be greater than 0"),
-  weight: z.coerce.number().positive("Weight must be greater than 0"),
-  totalCost: z.coerce.number().positive("Total cost must be greater than 0"),
-  shape: optionalString(),
-  color: optionalString(),
-  clarity: optionalString(),
-  labAccountName: optionalString(),
-  certificateNo: numericString("Certificate no."),
-  rap: optionalDecimal(),
-  mainDiscount: optionalDecimal(),
-  remark: optionalString(),
-  parcelOrStone: z.enum(PARCEL_OR_STONE),
-});
+const purchaseItemSchema = z
+  .object({
+    itemMasterId: z.string({ required_error: "Select an item" }).uuid("Select an item"),
+    lotName: z.string({ required_error: "Lot name is required" }).trim().min(1, "Lot name is required"),
+    quantity: z.coerce.number().int().positive("Quantity must be greater than 0"),
+    weight: z.coerce.number().positive("Weight must be greater than 0"),
+    totalCost: z.coerce.number().positive("Total cost must be greater than 0"),
+    shape: optionalString(),
+    color: optionalString(),
+    clarity: optionalString(),
+    labAccountName: optionalString(),
+    certificateNo: numericString("Certificate no."),
+    rap: optionalDecimal(),
+    mainDiscount: optionalDecimal(),
+    remark: optionalString(),
+    parcelOrStone: z.enum(PARCEL_OR_STONE),
+  })
+  .superRefine((item, context) => {
+    if (item.certificateNo && item.quantity !== 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["quantity"],
+        message: "Certified stone quantity must be 1",
+      });
+    }
+
+    if (item.parcelOrStone !== "STONE") {
+      context.addIssue({
+        code: "custom",
+        path: ["parcelOrStone"],
+        message: "Only Stone is allowed for new purchase items",
+      });
+    }
+  });
 
 const createPurchaseNoteSchema = z
   .object({
@@ -181,6 +199,7 @@ const mapInventoryItem = (item) => {
   return {
     id: item.id,
     itemId: item.itemId,
+    docId: item.docId ?? item.lotId,
     lotId: item.lotId,
     itemType: item.itemType,
     itemMaster: item.itemMaster,
@@ -293,7 +312,7 @@ const createInventoryMovements = async ({
       documentType,
       documentId,
       documentNo,
-      docId,
+      docId: item.docId ?? docId,
       companyId: item.companyId,
       departmentId: item.departmentId,
       createdById: userId,
@@ -598,6 +617,7 @@ export const createPurchaseNote = async (req, res) => {
 
         return {
           itemId: buildItemId(department.company, lotId),
+          docId: lotId,
           lotId,
           itemMasterId: itemMaster.id,
           itemType: itemMaster.itemType,
@@ -629,7 +649,7 @@ export const createPurchaseNote = async (req, res) => {
 
     const createdItems = await tx.inventoryItem.findMany({
       where: { purchaseNoteId: note.id },
-      select: { id: true, companyId: true, departmentId: true, status: true },
+      select: { id: true, docId: true, companyId: true, departmentId: true, status: true },
     });
 
     await createInventoryMovements({
@@ -826,6 +846,12 @@ export const getPurchaseNotes = async (req, res) => {
   if (searchValue) {
     where.OR = [
       /^\d+$/.test(searchValue) ? { docId: Number(searchValue) } : undefined,
+      /^\d+$/.test(searchValue)
+        ? { inventoryItems: { some: { docId: Number(searchValue) } } }
+        : undefined,
+      /^\d+$/.test(searchValue)
+        ? { returnedInventoryItems: { some: { docId: Number(searchValue) } } }
+        : undefined,
       { purchaseNo: { contains: searchValue, mode: "insensitive" } },
       { docType: { contains: searchValue, mode: "insensitive" } },
       { referenceDocNo: { contains: searchValue, mode: "insensitive" } },
@@ -926,6 +952,9 @@ export const getInventoryItems = async (req, res) => {
 
   if (searchValue) {
     const searchClauses = [
+      /^\d+$/.test(searchValue)
+        ? { docId: Number(searchValue) }
+        : undefined,
       /^\d+$/.test(searchValue)
         ? { purchaseNote: { docId: Number(searchValue) } }
         : undefined,

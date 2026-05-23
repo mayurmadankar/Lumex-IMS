@@ -16,8 +16,25 @@ import { AccountSearchPicker } from "@/components/common/account-search-picker";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useCompanyAccess } from "@/hooks/use-company-access";
 import { useFormDraft } from "@/hooks/use-form-draft";
+
+const NO_PAYMENT_TERM = "__NONE__";
+
+const paymentTermOptions = Array.from({ length: 15 }, (_, index) => {
+  const value = String(index + 1);
+  return {
+    value,
+    label: `${value} ${value === "1" ? "Day" : "Days"}`,
+  };
+});
 
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
@@ -51,7 +68,12 @@ function stockCurrency(item?: InventoryItemListItem | null) {
 }
 
 function normalizePaymentTerm(value: unknown) {
-  if (value === null || value === undefined || value === "") {
+  if (
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    value === NO_PAYMENT_TERM
+  ) {
     return "";
   }
 
@@ -173,6 +195,10 @@ export default function NewMemoOutPage() {
     setLotId("");
     setLotItem(null);
     setLotLookupError(null);
+  };
+
+  const handlePaymentTermChange = (value: string) => {
+    setPaymentTerm(normalizePaymentTerm(value));
   };
 
   useEffect(() => {
@@ -329,15 +355,22 @@ export default function NewMemoOutPage() {
             </Field>
 
             <Field label="Payment Term">
-              <Input
-                type="number"
-                min="1"
-                max="15"
-                value={paymentTerm}
-                onChange={(event) => setPaymentTerm(event.target.value)}
-                className="h-10 rounded-xl"
-                placeholder="Days"
-              />
+              <Select
+                value={paymentTerm || NO_PAYMENT_TERM}
+                onValueChange={handlePaymentTermChange}
+              >
+                <SelectTrigger className="h-10 w-full rounded-xl">
+                  <SelectValue placeholder="Payment term" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_PAYMENT_TERM}>Empty</SelectItem>
+                  {paymentTermOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
           </div>
 

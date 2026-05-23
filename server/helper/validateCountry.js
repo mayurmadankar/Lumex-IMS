@@ -1,16 +1,18 @@
 import prisma from "../prisma/client.js";
+import { normalizeCountryCode } from "../config/countries.js";
 
 export const getCountryIso2 = async (country) => {
   if (!country) return null;
 
   const value = String(country).trim();
+  const countryCode = normalizeCountryCode(value);
 
   const found = await prisma.country.findFirst({
     where: {
       isActive: true,
       OR: [
         { name: { equals: value, mode: "insensitive" } },
-        { iso2: { equals: value.toUpperCase() } },
+        { iso2: { equals: countryCode } },
       ],
     },
     select: { iso2: true },
@@ -32,7 +34,7 @@ export const isValidStateForCountry = async ({ countryIso2, stateId }) => {
       id: String(stateId).trim(),
       isActive: true,
       country: {
-        iso2: String(countryIso2).trim().toUpperCase(),
+        iso2: normalizeCountryCode(countryIso2),
         isActive: true,
       },
     },

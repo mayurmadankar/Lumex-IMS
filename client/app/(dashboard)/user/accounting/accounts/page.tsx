@@ -89,7 +89,7 @@ function AccountTable({
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span>{account.company.name}</span>
+                      <span>{account.partyCompanyName ?? "-"}</span>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
@@ -195,9 +195,9 @@ export default function AccountListPage() {
       matchesTableSearch(
         [
           account.accountName,
+          account.partyCompanyName,
           account.accountIndex,
           account.accountType.name,
-          account.company.name,
           account.originDepartment?.name,
           account.email,
           account.phone1,
@@ -267,7 +267,7 @@ export default function AccountListPage() {
         <TableSearchBar
           search={search}
           onSearch={setSearch}
-          placeholder="Search by name, code, company, department, email, phone or TRN"
+          placeholder="Search by account, company, department, email, phone or TRN"
         />
 
         {loading ? (

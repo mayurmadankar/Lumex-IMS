@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { normalizeCountryCode } from "../../config/countries.js";
 import { createAuditLog } from "../../helper/auditLog.js";
 import { sendError, sendSuccess } from "../../helper/response.js";
 import prisma from "../../prisma/client.js";
@@ -21,6 +22,12 @@ const optionalEmail = () =>
 const optionalUuid = () =>
   z.preprocess(emptyToUndefined, z.string().uuid("Invalid ID").optional());
 
+const optionalCountryCode = () =>
+  z.preprocess((value) => {
+    const normalized = emptyToUndefined(value);
+    return typeof normalized === "string" ? normalizeCountryCode(normalized) : normalized;
+  }, z.string().trim().length(3, "countryIso2 must be a 3-character country code").toUpperCase().optional());
+
 const statusSchema = z.preprocess((value) => {
   if (typeof value !== "string") return value;
   return value.trim().toUpperCase().replace(/\s+/g, "_");
@@ -33,16 +40,14 @@ const createAccountSchema = z.object({
   accountTypeId: z.string({ required_error: "accountTypeId is required" }).uuid("Invalid account type"),
   accountName: z.string({ required_error: "accountName is required" }).trim().min(2, "accountName must be at least 2 characters"),
   accountLongName: optionalString(),
+  partyCompanyName: optionalString(),
   accountIndex: optionalString(),
   status: statusSchema.optional().default("ACTIVE"),
   closeDate: optionalDateInput(),
   closeReason: optionalString(),
   address: optionalString(),
   address2: optionalString(),
-  countryIso2: z.preprocess(
-    emptyToUndefined,
-    z.string().trim().length(2, "countryIso2 must be a 2-letter ISO code").toUpperCase().optional(),
-  ),
+  countryIso2: optionalCountryCode(),
   stateId: optionalUuid(),
   city: optionalString(),
   zipCode: optionalString(),
@@ -78,6 +83,7 @@ const accountSelect = {
   id: true,
   accountName: true,
   accountLongName: true,
+  partyCompanyName: true,
   accountIndex: true,
   status: true,
   closeDate: true,
@@ -102,6 +108,7 @@ const accountSelect = {
   createdAt: true,
   updatedAt: true,
   accountType: { select: { id: true, name: true } },
+  country: { select: { id: true, name: true, iso2: true, phoneCode: true } },
   state: { select: { id: true, name: true, code: true } },
   company: { select: { id: true, name: true, code: true } },
   originDepartment: { select: { id: true, name: true } },
@@ -185,6 +192,8 @@ const resolveContext = async (req, res, data, existingAccount = null) => {
 };
 
 const resolveCountryAndState = async ({ countryIso2, stateId }) => {
+  const normalizedCountryIso2 = countryIso2 ? normalizeCountryCode(countryIso2) : undefined;
+
   if (stateId) {
     const state = await prisma.state.findFirst({
       where: {
@@ -194,7 +203,7 @@ const resolveCountryAndState = async ({ countryIso2, stateId }) => {
       },
       select: {
         id: true,
-        country: { select: { iso2: true } },
+        country: { select: { iso2: true, phoneCode: true } },
       },
     });
 
@@ -202,7 +211,7 @@ const resolveCountryAndState = async ({ countryIso2, stateId }) => {
       return { error: { field: "stateId", message: "Select a valid state" } };
     }
 
-    if (countryIso2 && state.country.iso2 !== countryIso2) {
+    if (normalizedCountryIso2 && state.country.iso2 !== normalizedCountryIso2) {
       return {
         error: {
           field: "stateId",
@@ -211,20 +220,74 @@ const resolveCountryAndState = async ({ countryIso2, stateId }) => {
       };
     }
 
-    return { countryIso2: state.country.iso2, stateId: state.id };
+    return {
+      countryIso2: state.country.iso2,
+      phoneCode: state.country.phoneCode,
+      stateId: state.id,
+    };
   }
 
-  if (countryIso2) {
+  if (normalizedCountryIso2) {
     const country = await prisma.country.findFirst({
-      where: { iso2: countryIso2, isActive: true },
-      select: { iso2: true },
+      where: { iso2: normalizedCountryIso2, isActive: true },
+      select: { iso2: true, phoneCode: true },
     });
     if (!country) {
       return { error: { field: "countryIso2", message: "Select a valid country" } };
     }
+
+    return { countryIso2: country.iso2, phoneCode: country.phoneCode, stateId: null };
   }
 
-  return { countryIso2: countryIso2 ?? null, stateId: null };
+  return { countryIso2: null, phoneCode: null, stateId: null };
+};
+
+const getLocalPhoneDigits = (value, phoneCode) => {
+  const phoneDigits = String(value ?? "").replace(/\D/g, "");
+  const codeDigits = String(phoneCode ?? "").replace(/\D/g, "");
+
+  if (codeDigits && phoneDigits.startsWith(codeDigits)) {
+    return phoneDigits.slice(codeDigits.length);
+  }
+
+  return phoneDigits;
+};
+
+const normalizePhoneFields = (data, geography) => {
+  const normalized = { ...data };
+
+  for (const field of ["phone1", "phone2"]) {
+    if (data[field] === undefined) continue;
+
+    if (!data[field]) {
+      normalized[field] = null;
+      continue;
+    }
+
+    if (!geography?.countryIso2 || !geography?.phoneCode) {
+      return {
+        error: {
+          field,
+          message: "Select a country before entering a phone number",
+        },
+      };
+    }
+
+    const localDigits = getLocalPhoneDigits(data[field], geography.phoneCode);
+
+    if (localDigits.length !== 10) {
+      return {
+        error: {
+          field,
+          message: "Phone number must be 10 digits after the country code",
+        },
+      };
+    }
+
+    normalized[field] = `${geography.phoneCode}${localDigits}`;
+  }
+
+  return { data: normalized };
 };
 
 const ensureAccountType = async (accountTypeId) => {
@@ -273,6 +336,7 @@ const buildAccountIndex = async (tx, company) => {
 const buildCreateData = (data, context, geography) => ({
   accountName: data.accountName,
   accountLongName: data.accountLongName ?? null,
+  partyCompanyName: data.partyCompanyName ?? null,
   status: data.status,
   closeDate: data.status === "CLOSED" ? parseDate(data.closeDate) : null,
   closeReason: data.status === "CLOSED" ? data.closeReason ?? null : null,
@@ -300,6 +364,7 @@ const mapUpdateData = (data, geography) => {
   [
     "accountName",
     "accountLongName",
+    "partyCompanyName",
     "address",
     "address2",
     "city",
@@ -354,7 +419,15 @@ export const createAccount = async (req, res) => {
     });
   }
 
-  if (!(await ensureUniqueTrn({ companyId: context.companyId, trnNo: data.trnNo }))) {
+  const phoneResult = normalizePhoneFields(data, geography);
+  if (phoneResult.error) {
+    return sendError(res, "Validation failed", 400, {
+      [phoneResult.error.field]: [phoneResult.error.message],
+    });
+  }
+  const normalizedData = phoneResult.data;
+
+  if (!(await ensureUniqueTrn({ companyId: context.companyId, trnNo: normalizedData.trnNo }))) {
     return sendError(res, "TRN number already exists for this company", 409, {
       trnNo: ["TRN number already exists for this company"],
     });
@@ -364,7 +437,7 @@ export const createAccount = async (req, res) => {
     const accountIndex = await buildAccountIndex(tx, context.company);
     const created = await tx.account.create({
       data: {
-        ...buildCreateData(data, { ...context, actorUserId: req.user.userId }, geography),
+        ...buildCreateData(normalizedData, { ...context, actorUserId: req.user.userId }, geography),
         accountIndex,
       },
       select: accountSelect,
@@ -419,6 +492,7 @@ export const getAccounts = async (req, res) => {
     const value = String(search).trim();
     where.OR = [
       { accountName: { contains: value, mode: "insensitive" } },
+      { partyCompanyName: { contains: value, mode: "insensitive" } },
       { accountIndex: { contains: value, mode: "insensitive" } },
       { email: { contains: value, mode: "insensitive" } },
       { phone1: { contains: value, mode: "insensitive" } },
@@ -482,11 +556,35 @@ export const updateAccount = async (req, res) => {
     });
   }
 
+  const needsPhoneValidation = data.phone1 !== undefined || data.phone2 !== undefined;
+  let normalizedData = data;
+
+  if (needsPhoneValidation) {
+    const phoneGeography =
+      geography ??
+      (existing.countryIso2
+        ? {
+            countryIso2: existing.countryIso2,
+            phoneCode: existing.country?.phoneCode ?? null,
+            stateId: existing.stateId ?? null,
+          }
+        : null);
+    const phoneResult = normalizePhoneFields(data, phoneGeography);
+
+    if (phoneResult.error) {
+      return sendError(res, "Validation failed", 400, {
+        [phoneResult.error.field]: [phoneResult.error.message],
+      });
+    }
+
+    normalizedData = phoneResult.data;
+  }
+
   if (
-    data.trnNo !== undefined &&
+    normalizedData.trnNo !== undefined &&
     !(await ensureUniqueTrn({
       companyId: context.companyId,
-      trnNo: data.trnNo,
+      trnNo: normalizedData.trnNo,
       excludeAccountId: id,
     }))
   ) {
@@ -499,7 +597,7 @@ export const updateAccount = async (req, res) => {
     const account = await tx.account.update({
       where: { id },
       data: {
-        ...mapUpdateData(data, geography),
+        ...mapUpdateData(normalizedData, geography),
         updatedById: req.user.userId,
       },
       select: accountSelect,

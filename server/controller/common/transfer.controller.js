@@ -113,6 +113,7 @@ const transferInclude = {
 const mapInventoryItemSummary = (item) => ({
   id: item.id,
   itemId: item.itemId,
+  docId: item.docId ?? item.lotId,
   lotId: item.lotId,
   itemType: item.itemType,
   itemMaster: item.itemMaster,
@@ -150,7 +151,7 @@ const mapInventoryItemSummary = (item) => ({
 
 const mapTransfer = (transfer) => ({
   id: transfer.id,
-  docId: transfer.docId,
+  docId: transfer.inventoryItem?.docId ?? transfer.docId,
   transferNo: transfer.transferNo,
   docType: isTransferReturn(transfer) ? "Transfer Return" : "Transfer",
   docDate: normalizeDate(transfer.docDate),
@@ -431,7 +432,7 @@ export const createTransfer = async (req, res) => {
           documentType: "TRANSFER",
           documentId: created.id,
           documentNo: transferNo,
-          docId: sequence.documentNumber,
+          docId: inventoryItem.docId ?? sequence.documentNumber,
           companyId: data.companyId,
           departmentId: toDepartment.id,
           createdById: req.user.userId,
@@ -677,7 +678,7 @@ export const createTransferReturn = async (req, res) => {
           documentType: "TRANSFER",
           documentId: created.id,
           documentNo: transferNo,
-          docId: sequence.documentNumber,
+          docId: inventoryItem.docId ?? sequence.documentNumber,
           companyId: data.companyId,
           departmentId: latestTransfer.fromDepartmentId,
           createdById: req.user.userId,
@@ -772,6 +773,7 @@ export const getTransfers = async (req, res) => {
   if (searchValue) {
     const searchClauses = [
       /^\d+$/.test(searchValue) ? { docId: Number(searchValue) } : undefined,
+      /^\d+$/.test(searchValue) ? { inventoryItem: { docId: Number(searchValue) } } : undefined,
       /^\d+$/.test(searchValue) ? { inventoryItem: { lotId: Number(searchValue) } } : undefined,
       { transferNo: { contains: searchValue, mode: "insensitive" } },
       { referenceDocNo: { contains: searchValue, mode: "insensitive" } },

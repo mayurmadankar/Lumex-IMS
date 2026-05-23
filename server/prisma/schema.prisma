@@ -228,13 +228,14 @@ model ItemMaster {
 }
 
 model Account {
-  id              String        @id @default(uuid())
-  accountName     String
-  accountLongName String?
-  accountIndex    String?
-  status          AccountStatus @default(ACTIVE)
-  closeDate       DateTime?
-  closeReason     String?
+  id               String        @id @default(uuid())
+  accountName      String
+  accountLongName  String?
+  partyCompanyName String?
+  accountIndex     String?
+  status           AccountStatus @default(ACTIVE)
+  closeDate        DateTime?
+  closeReason      String?
 
   address     String?
   address2    String?
@@ -335,6 +336,7 @@ model PurchaseNote {
 model InventoryItem {
   id       String @id @default(uuid())
   itemId   String
+  docId    Int
   lotId    Int
   itemType String @default("POLISHED_DIAMOND")
 
@@ -397,6 +399,7 @@ model InventoryItem {
   updatedAt DateTime @updatedAt
 
   @@unique([companyId, itemId])
+  @@unique([companyId, docId])
   @@unique([companyId, lotId])
   @@index([itemMasterId])
   @@index([purchaseNoteId])

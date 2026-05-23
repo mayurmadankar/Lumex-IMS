@@ -41,6 +41,16 @@ function sourceMemoLabel(note: PurchaseNoteListItem) {
   return sourceMemos.map((memo) => memo.memoNo).join(", ");
 }
 
+function itemDocIds(note: PurchaseNoteListItem) {
+  const ids = [...new Set((note.items ?? []).map((item) => item.docId).filter(Boolean))].sort(
+    (a, b) => a - b,
+  );
+  if (ids.length === 0) return String(note.docId);
+  if (ids.length === 1) return String(ids[0]);
+  const isRange = ids.every((id, index) => index === 0 || id === ids[index - 1] + 1);
+  return isRange ? `${ids[0]}-${ids[ids.length - 1]}` : ids.join(", ");
+}
+
 function StatusPill({ status }: { status: PurchaseNoteListItem["status"] }) {
   const active = status === "ACTIVE";
 
@@ -109,7 +119,7 @@ export default function PurchaseReturnListPage() {
           note.company.code,
           note.department.name,
           note.docType,
-          note.docId,
+          itemDocIds(note),
           note.purchaseNo,
           note.createdBy?.fullName,
           note.createdBy?.email,
@@ -234,7 +244,7 @@ export default function PurchaseReturnListPage() {
                             )
                           }
                         >
-                          {note.docId}
+                          {itemDocIds(note)}
                         </button>
                       </td>
                       <td className="px-3 py-3">

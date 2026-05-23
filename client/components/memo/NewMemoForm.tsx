@@ -161,6 +161,10 @@ function formatAmount(value: number) {
   return value.toFixed(2);
 }
 
+function hasCertificateNo(value: unknown) {
+  return String(value ?? "").trim().length > 0;
+}
+
 export default function NewMemoForm() {
   const router = useRouter();
   const user = useAppSelector((state) => state.auth.user);
@@ -319,7 +323,13 @@ export default function NewMemoForm() {
       setCurrency(draft.currency ?? DEFAULT_CURRENCY);
       setDocDate(draft.docDate ?? todayInputValue());
       setStatus(draft.status ?? "ACTIVE");
-      setMemoLines(lines);
+      setMemoLines(
+        lines.map((line) => ({
+          ...line,
+          quantity: hasCertificateNo(line.certificateNo) ? "1" : line.quantity,
+          parcelOrStone: "STONE",
+        })),
+      );
       setNextLineId(restoredLineId > 0 ? restoredLineId : fallbackLineId);
     },
   });
@@ -440,9 +450,28 @@ export default function NewMemoForm() {
 
   const updateLine = (lineId: number, field: MemoLineField, value: string) => {
     setMemoLines((lines) =>
-      lines.map((line) =>
-        line.lineId === lineId ? { ...line, [field]: value } : line,
-      ),
+      lines.map((line) => {
+        if (line.lineId !== lineId) return line;
+
+        if (field === "quantity" && hasCertificateNo(line.certificateNo)) {
+          return { ...line, quantity: "1" };
+        }
+
+        if (field === "certificateNo") {
+          return {
+            ...line,
+            certificateNo: value,
+            quantity: hasCertificateNo(value) ? "1" : line.quantity,
+            parcelOrStone: "STONE",
+          };
+        }
+
+        if (field === "parcelOrStone") {
+          return { ...line, parcelOrStone: "STONE" };
+        }
+
+        return { ...line, [field]: value };
+      }),
     );
   };
 
@@ -491,6 +520,17 @@ export default function NewMemoForm() {
 
     if (incompleteLine) {
       toast.error(`Complete item details for Line ${incompleteLine.lineId}.`);
+      return;
+    }
+
+    const invalidCertifiedQuantityLine = memoLines.find(
+      (line) => hasCertificateNo(line.certificateNo) && Number(line.quantity) !== 1,
+    );
+
+    if (invalidCertifiedQuantityLine) {
+      toast.error(
+        `Certificate item on Line ${invalidCertifiedQuantityLine.lineId} must have Qty 1.`,
+      );
       return;
     }
 
@@ -844,7 +884,6 @@ export default function NewMemoForm() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="STONE">Stone</SelectItem>
-                          <SelectItem value="PARCEL">Parcel</SelectItem>
                         </SelectContent>
                       </Select>
                     </Field>
@@ -889,7 +928,10 @@ export default function NewMemoForm() {
                         onChange={(event) =>
                           updateLine(line.lineId, "quantity", event.target.value)
                         }
-                        className="h-10 rounded-xl"
+                        readOnly={hasCertificateNo(line.certificateNo)}
+                        className={`h-10 rounded-xl ${
+                          hasCertificateNo(line.certificateNo) ? "bg-muted" : ""
+                        }`}
                       />
                     </Field>
 

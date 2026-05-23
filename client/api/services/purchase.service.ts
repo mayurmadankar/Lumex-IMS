@@ -70,6 +70,7 @@ export type PurchaseOriginDocument =
 export type PurchaseNoteInventoryItem = {
   id: string;
   itemId: string;
+  docId: number;
   lotId: number;
   itemType?: string;
   itemMaster?: {

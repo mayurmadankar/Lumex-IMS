@@ -50,6 +50,16 @@ function companyLabel(company?: MemoInventoryItem["company"]) {
   return company.code ? `${company.name} (${company.code})` : company.name;
 }
 
+function itemDocIds(memo: MemoListItem) {
+  const ids = [...new Set((memo.items ?? []).map((item) => item.docId).filter(Boolean))].sort(
+    (a, b) => a - b,
+  );
+  if (ids.length === 0) return String(memo.docId);
+  if (ids.length === 1) return String(ids[0]);
+  const isRange = ids.every((id, index) => index === 0 || id === ids[index - 1] + 1);
+  return isRange ? `${ids[0]}-${ids[ids.length - 1]}` : ids.join(", ");
+}
+
 function DetailValue({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="rounded-xl border bg-background px-4 py-3">
@@ -170,7 +180,7 @@ export default function MemoDetailPage() {
               {memo.memoNo}
             </h1>
             <p className="text-sm text-muted-foreground">
-              Doc ID {memo.docId} - {memo.docType}
+              Doc ID {itemDocIds(memo)} - {memo.docType}
             </p>
           </div>
           <Button
@@ -217,6 +227,7 @@ export default function MemoDetailPage() {
                 <thead>
                   <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
                     <th className="px-3 py-3 font-medium">Item ID</th>
+                    <th className="px-3 py-3 font-medium">Doc ID</th>
                     <th className="px-3 py-3 font-medium">Lot ID</th>
                     <th className="px-3 py-3 font-medium">Lot Name</th>
                     <th className="px-3 py-3 text-right font-medium">Qty</th>
@@ -237,6 +248,9 @@ export default function MemoDetailPage() {
                   {paginatedLineItems.map((item) => (
                     <tr key={item.id} className="border-b last:border-0">
                       <td className="px-3 py-3">{itemLabel(item)}</td>
+                      <td className="px-3 py-3 font-medium text-blue-600">
+                        {item.docId}
+                      </td>
                       <td className="px-3 py-3 font-medium text-blue-600">
                         {item.lotId}
                       </td>

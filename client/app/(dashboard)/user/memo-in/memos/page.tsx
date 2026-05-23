@@ -40,6 +40,16 @@ function formatReferenceDocNo(value?: string | null) {
   return value.replace(/^Memo Return:\s*/i, "");
 }
 
+function itemDocIds(memo: MemoListItem) {
+  const ids = [...new Set((memo.items ?? []).map((item) => item.docId).filter(Boolean))].sort(
+    (a, b) => a - b,
+  );
+  if (ids.length === 0) return String(memo.docId);
+  if (ids.length === 1) return String(ids[0]);
+  const isRange = ids.every((id, index) => index === 0 || id === ids[index - 1] + 1);
+  return isRange ? `${ids[0]}-${ids[ids.length - 1]}` : ids.join(", ");
+}
+
 function StatusPill({ status }: { status: MemoListItem["status"] }) {
   const active = status === "ACTIVE";
 
@@ -102,7 +112,7 @@ export default function MemoListPage() {
           memo.createdBy?.fullName,
           memo.createdBy?.email,
           memo.docType,
-          memo.docId,
+          itemDocIds(memo),
           memo.memoNo,
           memo.vendorDocId,
           memo.referenceDocNo,
@@ -232,7 +242,7 @@ export default function MemoListPage() {
                             router.push(`/user/memo-in/memos/${memo.id}`)
                           }
                         >
-                          {memo.docId}
+                          {itemDocIds(memo)}
                         </button>
                       </td>
                       <td className="px-3 py-3">

@@ -5,7 +5,7 @@ type Scope = "admin" | "user";
 export type AccountPayload = {
   accountTypeId: string;
   accountName: string;
-  accountLongName?: string;
+  partyCompanyName?: string;
   status?: string;
   closeDate?: string;
   closeReason?: string;
@@ -20,7 +20,6 @@ export type AccountPayload = {
   email?: string;
   website?: string;
   trnNo?: string;
-  isTaxable?: boolean;
   departmentId?: string;
   companyId?: string;
 };
@@ -28,7 +27,7 @@ export type AccountPayload = {
 export type AccountListItem = {
   id: string;
   accountName: string;
-  accountLongName?: string | null;
+  partyCompanyName?: string | null;
   accountIndex?: string | null;
   status: "ACTIVE" | "INACTIVE" | "PENDING" | "CLOSED";
   address?: string | null;

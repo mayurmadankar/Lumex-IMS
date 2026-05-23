@@ -82,7 +82,7 @@ function accountDocId(invoice: InvoiceListItem) {
 }
 
 function sourceDocId(invoice: InvoiceListItem) {
-  return invoice.sourceDocId ?? invoice.items?.[0]?.sourceDocId ?? "-";
+  return invoice.sourceDocNo ?? invoice.items?.[0]?.sourceDocNo ?? "-";
 }
 
 function lotId(invoice: InvoiceListItem) {
@@ -250,7 +250,7 @@ export default function InvoiceListPage() {
                     <th className="px-3 py-3 font-medium">Account</th>
                     <th className="px-3 py-3 font-medium">Account Doc ID</th>
                     <th className="px-3 py-3 font-medium">Lot ID</th>
-                    <th className="px-3 py-3 font-medium">Source Doc ID</th>
+                    <th className="px-3 py-3 font-medium">Source Document</th>
                     <th className="px-3 py-3 font-medium">Item Name</th>
                     <th className="px-3 py-3 font-medium">Description</th>
                     <th className="px-3 py-3 text-right font-medium">Qty</th>

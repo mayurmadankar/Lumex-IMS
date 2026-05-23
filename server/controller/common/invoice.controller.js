@@ -515,7 +515,7 @@ const createInventoryMovements = async ({
       documentType,
       documentId,
       documentNo,
-      docId,
+      docId: item.docId ?? docId,
       companyId: item.companyId,
       departmentId: item.departmentId,
       createdById: userId,
@@ -551,6 +551,7 @@ const invoiceInclude = {
         select: {
           id: true,
           itemId: true,
+          docId: true,
           lotId: true,
           lotName: true,
           status: true,
@@ -608,7 +609,7 @@ const mapInvoiceItem = (item) => ({
 
 const mapInvoice = (invoice) => ({
   id: invoice.id,
-  docId: invoice.docId,
+  docId: invoice.items?.[0]?.inventoryItem?.docId ?? invoice.docId,
   invoiceNo: invoice.invoiceNo,
   docType: invoice.docType,
   invoiceType: invoice.invoiceType,
@@ -683,7 +684,7 @@ const sourceDocumentSummary = (item) => {
   }
 
   return {
-    sourceDocId: source.docId,
+    sourceDocId: item.inventoryItem?.docId ?? source.docId,
     sourceDocNo: source.purchaseNo ?? source.memoNo ?? null,
     sourceDocType: source.docType,
   };
@@ -709,6 +710,7 @@ const mapInvoiceListItem = (invoice) => {
 const mapInvoiceReturnInventoryItem = (item) => ({
   id: item.id,
   itemId: item.itemId,
+  docId: item.docId ?? item.lotId,
   lotId: item.lotId,
   itemType: item.itemType,
   itemMaster: item.itemMaster,
@@ -1051,6 +1053,7 @@ export const createInvoiceFromInventory = async (req, res) => {
         destinationInventoryItem = await tx.inventoryItem.create({
           data: {
             itemId: buildItemId(sourceCompany, destinationSequence.lotId),
+            docId: destinationSequence.lotId,
             lotId: destinationSequence.lotId,
             itemMasterId: destinationItemMaster?.id ?? null,
             itemType: destinationItemMaster?.itemType ?? inventoryItem.itemType,
@@ -1080,6 +1083,7 @@ export const createInvoiceFromInventory = async (req, res) => {
           },
           select: {
             id: true,
+            docId: true,
             companyId: true,
             departmentId: true,
             status: true,
@@ -1399,6 +1403,9 @@ export const getInvoices = async (req, res) => {
   if (searchValue) {
     where.OR = [
       /^\d+$/.test(searchValue) ? { docId: Number(searchValue) } : undefined,
+      /^\d+$/.test(searchValue)
+        ? { items: { some: { inventoryItem: { docId: Number(searchValue) } } } }
+        : undefined,
       { invoiceNo: { contains: searchValue, mode: "insensitive" } },
       { referenceDocNo: { contains: searchValue, mode: "insensitive" } },
       { notes: { contains: searchValue, mode: "insensitive" } },

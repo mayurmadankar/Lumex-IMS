@@ -939,15 +939,6 @@ export default function ClipboardPage() {
     [activeDetailLots],
   );
 
-  const updateLot = (id: string, field: keyof ClipboardLot, value: string) => {
-    const nextLots = lots.map((item) =>
-      item.id === id ? { ...item, [field]: value } : item,
-    );
-
-    setLots(nextLots);
-    persistClipboardDraft({ lots: nextLots });
-  };
-
   const removeLot = (id: string) => {
     const nextLots = lots.filter((item) => item.id !== id);
     const removedLot = lots.find((item) => item.id === id);
@@ -1299,7 +1290,6 @@ export default function ClipboardPage() {
               sort={handleSort}
               removeLot={removeLot}
               removeAll={handleRemoveAll}
-              updateLot={updateLot}
             />
           ) : (
             <DetailGrid
@@ -1472,14 +1462,12 @@ function SummaryGrid({
   sort,
   removeLot,
   removeAll,
-  updateLot,
 }: {
   lots: ClipboardLot[];
   totals: { weight: number; quantity: number };
   sort: (key: SortKey) => void;
   removeLot: (id: string) => void;
   removeAll: () => void;
-  updateLot: (id: string, field: keyof ClipboardLot, value: string) => void;
 }) {
   return (
     <section className="overflow-hidden rounded-lg border bg-background">
@@ -1533,20 +1521,9 @@ function SummaryGrid({
                   <td className="px-3 py-2 font-medium text-blue-600">
                     {lot.lotId || "-"}
                   </td>
-                  <EditableCell
-                    value={lot.lotName}
-                    onChange={(value) => updateLot(lot.id, "lotName", value)}
-                  />
-                  <EditableCell
-                    value={lot.weight}
-                    onChange={(value) => updateLot(lot.id, "weight", value)}
-                    align="right"
-                  />
-                  <EditableCell
-                    value={lot.quantity}
-                    onChange={(value) => updateLot(lot.id, "quantity", value)}
-                    align="right"
-                  />
+                  <ReadOnlyCell value={lot.lotName} />
+                  <ReadOnlyCell value={lot.weight} align="right" />
+                  <ReadOnlyCell value={lot.quantity} align="right" />
                   <td className="px-3 py-2">
                     <span className="font-semibold text-muted-foreground">
                       {normalizeStatusLabel(lot.status)}
@@ -1739,24 +1716,20 @@ function SortableHeader({
   );
 }
 
-function EditableCell({
+function ReadOnlyCell({
   value,
   align,
-  onChange,
 }: {
   value: string;
   align?: "left" | "right";
-  onChange: (value: string) => void;
 }) {
   return (
-    <td className="px-3 py-2">
-      <Input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={`h-8 rounded-md border-transparent bg-transparent px-2 focus-visible:border-input focus-visible:bg-background ${
-          align === "right" ? "text-right" : ""
-        }`}
-      />
+    <td
+      className={`px-3 py-2 ${
+        align === "right" ? "text-right tabular-nums" : ""
+      }`}
+    >
+      <span className="font-medium">{value || "-"}</span>
     </td>
   );
 }

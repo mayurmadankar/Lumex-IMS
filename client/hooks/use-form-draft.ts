@@ -208,6 +208,40 @@ function removeRouteTab(href: string) {
   writeRouteTabs(readRouteTabs().filter((tab) => tab.href !== href));
 }
 
+export function clearWorkspaceQuickAccessStorage() {
+  if (typeof window === "undefined") return;
+
+  try {
+    const registry = readDraftRegistry();
+
+    registry.forEach((draft) => {
+      window.localStorage.removeItem(draft.storageKey);
+    });
+
+    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith("ims:draft:")) {
+        window.localStorage.removeItem(key);
+      }
+    }
+
+    for (let index = window.sessionStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.sessionStorage.key(index);
+      if (key?.startsWith("ims:draft:")) {
+        window.sessionStorage.removeItem(key);
+      }
+    }
+
+    window.localStorage.removeItem(DRAFT_REGISTRY_STORAGE_KEY);
+    window.localStorage.removeItem(ROUTE_TAB_STORAGE_KEY);
+    removeClipboardDraftStorage();
+    notifyDraftRegistryChanged();
+    notifyRouteTabsChanged();
+  } catch {
+    // Best-effort logout cleanup.
+  }
+}
+
 export function useFormDraft<T>({
   storageKey,
   values,

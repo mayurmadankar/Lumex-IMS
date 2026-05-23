@@ -1,5 +1,6 @@
 import prisma from "../../prisma/client.js";
 import { sendError, sendSuccess } from "../../helper/response.js";
+import { normalizeCountryCode } from "../../config/countries.js";
 
 export const getCountries = async (_req, res) => {
   const countries = await prisma.country.findMany({
@@ -17,7 +18,7 @@ export const getCountries = async (_req, res) => {
 };
 
 export const getStates = async (req, res) => {
-  const countryIso2 = String(req.params.countryIso2 ?? "").trim().toUpperCase();
+  const countryIso2 = normalizeCountryCode(req.params.countryIso2);
 
   if (!countryIso2) {
     return sendError(res, "countryIso2 is required", 400, {

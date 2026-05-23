@@ -43,7 +43,7 @@ type SelectOption = string | { value: string; label: string };
 type AccountFormValues = {
   accountTypeId: string;
   accountName: string;
-  accountLongName: string;
+  partyCompanyName: string;
   status: string;
   closeDate: string;
   closeReason: string;
@@ -59,7 +59,6 @@ type AccountFormValues = {
   email: string;
   website: string;
   trnNo: string;
-  isTaxable: boolean;
 
   popupRemark: string;
   remark: string;
@@ -70,7 +69,7 @@ function defaultAccountFormValues(): AccountFormValues {
   return {
     accountTypeId: "",
     accountName: "",
-    accountLongName: "",
+    partyCompanyName: "",
     status: "Active",
     closeDate: "",
     closeReason: "",
@@ -85,7 +84,6 @@ function defaultAccountFormValues(): AccountFormValues {
     email: "",
     website: "",
     trnNo: "",
-    isTaxable: true,
     popupRemark: "",
     remark: "",
     legalText1: "",
@@ -107,14 +105,62 @@ interface SelectInputProps {
   disabled?: boolean;
 }
 
-interface CheckboxProps {
-  control: Control<AccountFormValues>;
-  name: keyof AccountFormValues;
-  label: string;
-}
-
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
+}
+
+function getLocalPhoneDigits(value?: string | null, phoneCode?: string | null) {
+  const phoneDigits = String(value ?? "").replace(/\D/g, "");
+  const codeDigits = String(phoneCode ?? "").replace(/\D/g, "");
+  const localDigits =
+    codeDigits && phoneDigits.startsWith(codeDigits)
+      ? phoneDigits.slice(codeDigits.length)
+      : phoneDigits;
+
+  return localDigits.slice(0, 10);
+}
+
+function buildPhoneValue(phoneCode: string, localDigits: string) {
+  return phoneCode && localDigits ? `${phoneCode}${localDigits}` : "";
+}
+
+function PhoneInput({
+  value,
+  phoneCode,
+  placeholder = "Number",
+  invalid = false,
+  onChange,
+}: {
+  value?: string;
+  phoneCode: string;
+  placeholder?: string;
+  invalid?: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div
+      className={cx(
+        "flex h-9 overflow-hidden rounded-lg border bg-white transition",
+        invalid ? "border-destructive ring-3 ring-destructive/20" : "border-input",
+      )}
+    >
+      <span className="flex min-w-16 items-center justify-center border-r border-input bg-slate-50 px-3 text-[13px] font-medium text-slate-700">
+        {phoneCode || "+--"}
+      </span>
+      <Input
+        type="tel"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        maxLength={10}
+        value={getLocalPhoneDigits(value, phoneCode)}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={phoneCode ? placeholder : "Select country first"}
+        disabled={!phoneCode}
+        aria-invalid={invalid}
+        className="h-9 rounded-none border-0 bg-transparent text-[13px] focus-visible:border-0 focus-visible:ring-0"
+      />
+    </div>
+  );
 }
 
 function SectionCard({
@@ -182,44 +228,6 @@ function SelectInput({
   );
 }
 
-function Checkbox({ control, name, label }: CheckboxProps) {
-  return (
-    <Controller
-      control={control}
-      name={name}
-      render={({ field }) => (
-        <button
-          type="button"
-          onClick={() => field.onChange(!field.value)}
-          className="flex h-9 items-center gap-2 rounded-xl border border-[#dfddd8] bg-white px-3 text-[13px] text-slate-700 transition hover:border-cyan-300"
-        >
-          <span
-            className={cx(
-              "flex h-4 w-4 items-center justify-center rounded border transition",
-              field.value
-                ? "border-cyan-600 bg-cyan-600 text-white"
-                : "border-slate-300 bg-white"
-            )}
-          >
-            {field.value ? (
-              <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 10 10">
-                <path
-                  d="M1.5 5l2.2 2.2L8.5 2.5"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            ) : null}
-          </span>
-          <span>{label}</span>
-        </button>
-      )}
-    />
-  );
-}
-
 export default function AccountForm() {
   const router = useRouter();
   const [detailsOpen, setDetailsOpen] = useState(true);
@@ -246,7 +254,8 @@ export default function AccountForm() {
     reset,
     setError,
     setValue,
-    formState: { isSubmitting },
+    getValues,
+    formState: { errors, isSubmitting },
   } = useForm<AccountFormValues>({
     defaultValues: defaultAccountFormValues(),
   });
@@ -256,7 +265,14 @@ export default function AccountForm() {
   const selectedCountryIso2 = useWatch({ control, name: "countryIso2" });
   const selectedStateId = useWatch({ control, name: "stateId" });
   const selectedAccountTypeId = useWatch({ control, name: "accountTypeId" });
+  const phone1Value = useWatch({ control, name: "phone1" });
+  const phone2Value = useWatch({ control, name: "phone2" });
   const { countries, states, loading: geographyLoading } = useGeography(selectedCountryIso2);
+  const selectedCountry = useMemo(
+    () => countries.find((country) => country.iso2 === selectedCountryIso2),
+    [countries, selectedCountryIso2],
+  );
+  const selectedPhoneCode = selectedCountry?.phoneCode ?? "";
   const accountDraftKey =
     scope === "admin"
       ? selectedCompanyId
@@ -328,13 +344,36 @@ export default function AccountForm() {
     }
 
     if (previousCountryRef.current !== selectedCountryIso2) {
+      const previousCountry = countries.find(
+        (country) => country.iso2 === previousCountryRef.current,
+      );
+      const nextCountry = countries.find((country) => country.iso2 === selectedCountryIso2);
+      const previousPhoneCode = previousCountry?.phoneCode ?? "";
+      const nextPhoneCode = nextCountry?.phoneCode ?? "";
+
       setValue("stateId", "");
       setValue("city", "");
+      setValue(
+        "phone1",
+        buildPhoneValue(
+          nextPhoneCode,
+          getLocalPhoneDigits(getValues("phone1"), previousPhoneCode || nextPhoneCode),
+        ),
+        { shouldDirty: true, shouldValidate: true },
+      );
+      setValue(
+        "phone2",
+        buildPhoneValue(
+          nextPhoneCode,
+          getLocalPhoneDigits(getValues("phone2"), previousPhoneCode || nextPhoneCode),
+        ),
+        { shouldDirty: true, shouldValidate: true },
+      );
       previousStateRef.current = "";
     }
 
     previousCountryRef.current = selectedCountryIso2;
-  }, [selectedCountryIso2, setValue]);
+  }, [countries, getValues, selectedCountryIso2, setValue]);
 
   useEffect(() => {
     if (previousStateRef.current === undefined) {
@@ -348,6 +387,36 @@ export default function AccountForm() {
 
     previousStateRef.current = selectedStateId;
   }, [selectedStateId, setValue]);
+
+  const handlePhoneChange = (field: "phone1" | "phone2", value: string) => {
+    const localDigits = getLocalPhoneDigits(value, selectedPhoneCode);
+    setValue(field, buildPhoneValue(selectedPhoneCode, localDigits), {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  };
+
+  const validatePhoneField = (
+    field: "phone1" | "phone2",
+    label: string,
+    value: string,
+  ) => {
+    if (!value) return true;
+
+    if (!selectedCountryIso2 || !selectedPhoneCode) {
+      setError("countryIso2", { message: "Select a country before entering a phone number" });
+      setError(field, { message: "Select a country before entering a phone number" });
+      return false;
+    }
+
+    const localDigits = getLocalPhoneDigits(value, selectedPhoneCode);
+    if (localDigits.length !== 10) {
+      setError(field, { message: `${label} must be 10 digits after country code` });
+      return false;
+    }
+
+    return true;
+  };
 
   const handleCancel = () => {
     router.back();
@@ -369,10 +438,19 @@ export default function AccountForm() {
       return;
     }
 
+    const isPhoneValid =
+      validatePhoneField("phone1", "Phone 1", data.phone1) &&
+      validatePhoneField("phone2", "Phone 2", data.phone2);
+
+    if (!isPhoneValid) {
+      toast.error("Check phone number details");
+      return;
+    }
+
     try {
       const payload = Object.fromEntries(
         Object.entries({ ...data, ...contextPayload }).filter(([, value]) => value !== ""),
-      ) as Parameters<typeof createAccount>[1];
+      ) as unknown as Parameters<typeof createAccount>[1];
       const response = await createAccount(scope, payload);
       toast.success(`Account created: ${response.data.account.accountIndex}`);
       router.push("/user/accounting/accounts");
@@ -454,8 +532,8 @@ export default function AccountForm() {
                   <TextInput register={register} name="accountName" placeholder="Enter account name" />
                 </Field>
 
-                <Field label="Account Long Name">
-                  <TextInput register={register} name="accountLongName" placeholder="Enter long name" />
+                <Field label="Company Name">
+                  <TextInput register={register} name="partyCompanyName" placeholder="Enter vendor/customer company" />
                 </Field>
 
                 <Field label="Status">
@@ -496,7 +574,7 @@ export default function AccountForm() {
                       <TextInput register={register} name="address2" placeholder="Enter address line 2" />
                     </Field>
 
-                    <Field label="Country">
+                    <Field label="Country" error={errors.countryIso2?.message}>
                       <SelectInput
                         control={control}
                         name="countryIso2"
@@ -530,12 +608,22 @@ export default function AccountForm() {
                       <TextInput register={register} name="zipCode" placeholder="Enter zip code" />
                     </Field>
 
-                    <Field label="Phone 1">
-                      <TextInput register={register} name="phone1" type="tel" placeholder="Enter phone" />
+                    <Field label="Phone 1" error={errors.phone1?.message}>
+                      <PhoneInput
+                        value={phone1Value}
+                        phoneCode={selectedPhoneCode}
+                        invalid={Boolean(errors.phone1)}
+                        onChange={(value) => handlePhoneChange("phone1", value)}
+                      />
                     </Field>
 
-                    <Field label="Phone 2">
-                      <TextInput register={register} name="phone2" type="tel" placeholder="Enter phone" />
+                    <Field label="Phone 2" error={errors.phone2?.message}>
+                      <PhoneInput
+                        value={phone2Value}
+                        phoneCode={selectedPhoneCode}
+                        invalid={Boolean(errors.phone2)}
+                        onChange={(value) => handlePhoneChange("phone2", value)}
+                      />
                     </Field>
 
                     <Field label="Email">
@@ -550,9 +638,6 @@ export default function AccountForm() {
                       <TextInput register={register} name="trnNo" placeholder="Enter TRN number" />
                     </Field>
 
-                    <Field label="Tax Setting">
-                      <Checkbox control={control} name="isTaxable" label="Taxable account" />
-                    </Field>
                   </div>
                 </SectionCard>
 

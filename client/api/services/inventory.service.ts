@@ -58,6 +58,7 @@ export type InventoryOriginDocument =
 export type InventoryItemListItem = {
   id: string;
   itemId: string;
+  docId: number;
   lotId: number;
   itemType?: string;
   itemMaster?: {

@@ -5,16 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
 import { createItem, getItems } from "@/api/services/item.service";
-import type {
-  ItemListItem,
-  UnitOfMeasurement,
-  UnitOfWeight,
-} from "@/api/services/item.service";
+import type { ItemListItem, UnitOfWeight } from "@/api/services/item.service";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/input";
 import Pagination from "@/components/ui/pagination";
-import { TableSearchBar } from "@/components/ui/table-search-bar";
 import {
   Select,
   SelectContent,
@@ -22,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TableSearchBar } from "@/components/ui/table-search-bar";
 import { permissionAllows, permissionsToMap } from "@/config/modules";
 import { usePagination } from "@/hooks/use-pagination";
 import { matchesTableSearch } from "@/lib/table-search";
@@ -30,14 +26,6 @@ import { useAppSelector } from "@/store/hooks";
 const unitOfWeightOptions: Array<{ value: UnitOfWeight; label: string }> = [
   { value: "CARATS", label: "Carats" },
   { value: "GRAMS", label: "Grams" },
-];
-
-const unitOfMeasurementOptions: Array<{
-  value: UnitOfMeasurement;
-  label: string;
-}> = [
-  { value: "PCS", label: "Pcs" },
-  { value: "WEIGHT", label: "Weight" },
 ];
 
 function formatDate(value: string) {
@@ -58,7 +46,6 @@ export default function ItemListPage() {
   const [itemName, setItemName] = useState("");
   const [itemType, setItemType] = useState("");
   const [uow, setUow] = useState<UnitOfWeight>("CARATS");
-  const [uom, setUom] = useState<UnitOfMeasurement>("PCS");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +96,7 @@ export default function ItemListPage() {
 
     return items.filter((item) =>
       matchesTableSearch(
-        [item.itemId, item.itemName, item.itemType, item.uow, item.uom],
+        [item.itemId, item.itemName, item.itemType, item.uow],
         value,
       ),
     );
@@ -120,7 +107,6 @@ export default function ItemListPage() {
     setItemName("");
     setItemType("");
     setUow("CARATS");
-    setUom("PCS");
   };
 
   const handleCreateItem = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -143,7 +129,7 @@ export default function ItemListPage() {
         itemName: itemName.trim(),
         itemType: itemType.trim(),
         uow,
-        uom,
+        uom: "PCS",
       });
       const item = response.data.item as ItemListItem;
       setItems((current) =>
@@ -187,7 +173,7 @@ export default function ItemListPage() {
         {canWriteItems && (
           <form
             onSubmit={handleCreateItem}
-            className="grid gap-4 rounded-2xl border bg-background p-4 md:grid-cols-[140px_1fr_1fr_160px_160px_auto]"
+            className="grid gap-4 rounded-2xl border bg-background p-4 md:grid-cols-[140px_1fr_1fr_160px_auto]"
           >
             <Field label="Item ID">
               <Input value="System" disabled className="h-10 rounded-xl" />
@@ -218,23 +204,6 @@ export default function ItemListPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {unitOfWeightOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="UOM" required>
-              <Select
-                value={uom}
-                onValueChange={(value) => setUom(value as UnitOfMeasurement)}
-              >
-                <SelectTrigger className="h-10 w-full rounded-xl">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {unitOfMeasurementOptions.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>
@@ -281,14 +250,13 @@ export default function ItemListPage() {
         ) : (
           <div className="overflow-hidden rounded-2xl border bg-background">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-sm">
+              <table className="w-full min-w-[760px] text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
                     <th className="px-3 py-3 font-medium">Item ID</th>
                     <th className="px-3 py-3 font-medium">Item Name</th>
                     <th className="px-3 py-3 font-medium">Item Type</th>
                     <th className="px-3 py-3 font-medium">UOW</th>
-                    <th className="px-3 py-3 font-medium">UOM</th>
                     <th className="px-3 py-3 font-medium">Company</th>
                     <th className="px-3 py-3 font-medium">Created</th>
                   </tr>
@@ -302,7 +270,6 @@ export default function ItemListPage() {
                       <td className="px-3 py-3">{item.itemName}</td>
                       <td className="px-3 py-3">{item.itemType}</td>
                       <td className="px-3 py-3">{item.uow}</td>
-                      <td className="px-3 py-3">{item.uom}</td>
                       <td className="px-3 py-3">
                         {item.company.code
                           ? `${item.company.name} (${item.company.code})`

@@ -86,14 +86,6 @@ function originDocument(item: MemoInventoryItem) {
   );
 }
 
-function purchaseDocument(item: MemoInventoryItem) {
-  return item.purchase ?? item.purchaseNote ?? null;
-}
-
-function returnDocument(item: MemoInventoryItem) {
-  return item.purchaseReturn ?? item.memoReturn ?? null;
-}
-
 function currentDocument(item: MemoInventoryItem) {
   return originDocument(item);
 }
@@ -302,13 +294,9 @@ export default function MemoListPage() {
           item.itemMaster?.itemName,
           item.itemMaster?.itemType,
           item.itemType,
+          item.docId,
           item.lotId,
-          originDocument(item)?.docId,
           documentNo(originDocument(item)),
-          purchaseDocument(item)?.docId,
-          documentNo(purchaseDocument(item)),
-          returnDocument(item)?.docId,
-          documentNo(returnDocument(item)),
           item.lotName,
           item.labAccountName,
           item.certificateNo,
@@ -607,7 +595,7 @@ export default function MemoListPage() {
         ) : (
           <div className="overflow-hidden rounded-2xl border bg-background">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[2220px] text-sm">
+              <table className="w-full min-w-[2020px] text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
                     {(canPurchaseMemoItems || canReturnMemoItems) && (
@@ -624,9 +612,7 @@ export default function MemoListPage() {
                       </th>
                     )}
                     <th className="px-3 py-3 font-medium">Item ID</th>
-                    <th className="px-3 py-3 font-medium">Origin Doc ID</th>
-                    <th className="px-3 py-3 font-medium">Purchase Doc ID</th>
-                    <th className="px-3 py-3 font-medium">Return Doc ID</th>
+                    <th className="px-3 py-3 font-medium">Doc ID</th>
                     <th className="px-3 py-3 font-medium">Lot ID</th>
                     <th className="px-3 py-3 font-medium">Lot Name</th>
                     <th className="px-3 py-3 text-right font-medium">Qty</th>
@@ -667,17 +653,7 @@ export default function MemoListPage() {
                       <td className="px-3 py-3">{itemLabel(item)}</td>
                       <td className="px-3 py-3">
                         <span className="font-medium text-blue-600">
-                          {originDocument(item)?.docId ?? "-"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3">
-                        <span className="font-medium text-blue-600">
-                          {purchaseDocument(item)?.docId ?? "-"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3">
-                        <span className="font-medium text-blue-600">
-                          {returnDocument(item)?.docId ?? "-"}
+                          {item.docId ?? "-"}
                         </span>
                       </td>
                       <td className="px-3 py-3">
@@ -861,7 +837,7 @@ export default function MemoListPage() {
               <thead>
                 <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
                   <th className="px-3 py-2 font-medium">Item ID</th>
-                  <th className="px-3 py-2 font-medium">Origin Doc ID</th>
+                  <th className="px-3 py-2 font-medium">Doc ID</th>
                   <th className="px-3 py-2 font-medium">Lot ID</th>
                   <th className="px-3 py-2 font-medium">Lot Name</th>
                   <th className="px-3 py-2 text-right font-medium">Weight</th>
@@ -875,7 +851,7 @@ export default function MemoListPage() {
                   <tr key={item.id} className="border-b last:border-0">
                     <td className="px-3 py-2">{itemLabel(item)}</td>
                     <td className="px-3 py-2">
-                      {originDocument(item)?.docId ?? "-"}
+                      {item.docId ?? "-"}
                     </td>
                     <td className="px-3 py-2">{item.lotId}</td>
                     <td className="px-3 py-2">{item.lotName}</td>

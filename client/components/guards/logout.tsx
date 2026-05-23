@@ -3,6 +3,7 @@
 import { LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+import { clearWorkspaceQuickAccessStorage } from "@/hooks/use-form-draft";
 import { persistor } from "@/store";
 import { useAppDispatch } from "@/store/hooks";
 import { clearSession } from "@/store/slices/authSlice";
@@ -16,6 +17,7 @@ export default function LogoutButton() {
   const dispatch = useAppDispatch();
 
   const handleLogout = async () => {
+    clearWorkspaceQuickAccessStorage();
     dispatch(clearSession());
     dispatch(clearCompanyState());
     dispatch(clearPermissions());

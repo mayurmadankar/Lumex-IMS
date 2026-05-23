@@ -5,12 +5,12 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
+import { getAccounts } from "@/api/services/account.service";
+import type { AccountListItem } from "@/api/services/account.service";
 import {
   getInventoryItems,
   returnInventoryItems,
 } from "@/api/services/inventory.service";
-import { getAccounts } from "@/api/services/account.service";
-import type { AccountListItem } from "@/api/services/account.service";
 import type { InventoryItemListItem } from "@/api/services/inventory.service";
 import { createInvoiceFromInventory } from "@/api/services/invoice.service";
 import type {
@@ -25,7 +25,6 @@ import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/input";
 import Modal, { ModalBody, ModalFooter } from "@/components/ui/modal";
 import Pagination from "@/components/ui/pagination";
-import { TableSearchBar } from "@/components/ui/table-search-bar";
 import {
   Select,
   SelectContent,
@@ -33,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TableSearchBar } from "@/components/ui/table-search-bar";
 import { permissionAllows, permissionsToMap } from "@/config/modules";
 import { usePagination } from "@/hooks/use-pagination";
 import { matchesTableSearch } from "@/lib/table-search";
@@ -83,10 +83,6 @@ function originDocument(item: InventoryItemListItem) {
 
 function purchaseDocument(item: InventoryItemListItem) {
   return item.purchase ?? item.purchaseNote ?? null;
-}
-
-function returnDocument(item: InventoryItemListItem) {
-  return item.purchaseReturn ?? item.memoReturn ?? null;
 }
 
 function stockDocument(item: InventoryItemListItem) {
@@ -405,13 +401,9 @@ export default function InventoryListPage() {
           item.itemMaster?.itemName,
           item.itemMaster?.itemType,
           item.itemType,
+          item.docId,
           item.lotId,
-          originDocument(item)?.docId,
           documentNo(originDocument(item)),
-          purchaseDocument(item)?.docId,
-          documentNo(purchaseDocument(item)),
-          returnDocument(item)?.docId,
-          documentNo(returnDocument(item)),
           item.lotName,
           item.labAccountName,
           item.certificateNo,
@@ -859,7 +851,7 @@ export default function InventoryListPage() {
         ) : (
           <div className="overflow-hidden rounded-2xl border bg-background">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1880px] text-[13px]">
+              <table className="w-full min-w-[1700px] text-[13px]">
                 <thead>
                   <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
                     {canSelectInventory && (
@@ -876,9 +868,7 @@ export default function InventoryListPage() {
                       </th>
                     )}
                     <th className="px-2.5 py-3 font-medium">Item ID</th>
-                    <th className="px-2.5 py-3 font-medium">Origin Doc ID</th>
-                    <th className="px-2.5 py-3 font-medium">Purchase Doc ID</th>
-                    <th className="px-2.5 py-3 font-medium">Return Doc ID</th>
+                    <th className="px-2.5 py-3 font-medium">Doc ID</th>
                     <th className="px-2.5 py-3 font-medium">Lot ID</th>
                     <th className="px-2.5 py-3 font-medium">Lot Name</th>
                     <th className="px-2.5 py-3 text-right font-medium">Qty</th>
@@ -928,17 +918,7 @@ export default function InventoryListPage() {
                       <td className="px-2.5 py-3">{itemLabel(item)}</td>
                       <td className="px-2.5 py-3">
                         <span className="font-medium text-blue-600">
-                          {originDocument(item)?.docId ?? "-"}
-                        </span>
-                      </td>
-                      <td className="px-2.5 py-3">
-                        <span className="font-medium text-blue-600">
-                          {purchaseDocument(item)?.docId ?? "-"}
-                        </span>
-                      </td>
-                      <td className="px-2.5 py-3">
-                        <span className="font-medium text-blue-600">
-                          {returnDocument(item)?.docId ?? "-"}
+                          {item.docId ?? "-"}
                         </span>
                       </td>
                       <td className="px-2.5 py-3">
@@ -1186,13 +1166,9 @@ export default function InventoryListPage() {
                     className="h-10 rounded-xl bg-muted"
                   />
                 </Field>
-                <Field label="Source Doc ID">
+                <Field label="Doc ID">
                   <Input
-                    value={String(
-                      purchaseDocument(invoiceItem)?.docId ??
-                        originDocument(invoiceItem)?.docId ??
-                        "-",
-                    )}
+                    value={String(invoiceItem.docId ?? "-")}
                     readOnly
                     className="h-10 rounded-xl bg-muted"
                   />

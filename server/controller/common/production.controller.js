@@ -262,6 +262,7 @@ const mapInventoryItem = (item) => {
   return {
     id: item.id,
     itemId: item.itemId,
+    docId: item.docId ?? item.lotId,
     lotId: item.lotId,
     itemType: item.itemType,
     itemMaster: item.itemMaster,
@@ -304,7 +305,10 @@ const mapInventoryItem = (item) => {
 
 const mapProductionDocument = (document) => ({
   id: document.id,
-  docId: document.docId,
+  docId:
+    document.sourceInventoryItem?.docId ??
+    document.returnedInventoryItems?.[0]?.docId ??
+    document.docId,
   productionNo: document.productionNo,
   docType: document.docType,
   openDate: normalizeDate(document.openDate),
@@ -394,7 +398,7 @@ const createInventoryMovement = async ({
       documentType: "PRODUCTION",
       documentId: document.id,
       documentNo: document.productionNo,
-      docId: document.docId,
+      docId: item.docId ?? document.docId,
       companyId: item.companyId,
       departmentId: departmentId ?? item.departmentId,
       createdById: userId,
@@ -445,6 +449,7 @@ const buildReturnedPartRows = ({
 
     return {
       itemId: buildItemId(sourceItem.company, lotId),
+      docId: lotId,
       lotId,
       itemMasterId: itemMaster?.id ?? null,
       itemType: itemMaster?.itemType ?? sourceItem.itemType,
@@ -948,6 +953,7 @@ export const returnProductionParts = async (req, res) => {
         where: { returnedFromProductionId: document.id },
         select: {
           id: true,
+          docId: true,
           companyId: true,
           departmentId: true,
           status: true,
@@ -1009,7 +1015,7 @@ export const returnProductionParts = async (req, res) => {
           documentType: "PRODUCTION",
           documentId: document.id,
           documentNo: document.productionNo,
-          docId: document.docId,
+          docId: item.docId ?? document.docId,
           companyId: item.companyId,
           departmentId: item.departmentId,
           createdById: req.user.userId,
@@ -1091,6 +1097,9 @@ export const getProductionDocuments = async (req, res) => {
   if (searchValue) {
     where.OR = [
       /^\d+$/.test(searchValue) ? { docId: Number(searchValue) } : undefined,
+      /^\d+$/.test(searchValue)
+        ? { sourceInventoryItem: { docId: Number(searchValue) } }
+        : undefined,
       /^\d+$/.test(searchValue)
         ? { sourceInventoryItem: { lotId: Number(searchValue) } }
         : undefined,

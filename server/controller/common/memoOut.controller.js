@@ -238,6 +238,7 @@ const mapInventoryItem = (item) => {
   return {
     id: item.id,
     itemId: item.itemId,
+    docId: item.docId ?? item.lotId,
     lotId: item.lotId,
     itemType: item.itemType,
     itemMaster: item.itemMaster,
@@ -290,7 +291,7 @@ const mapMemoOut = (memoOut) => {
 
   return {
     id: memoOut.id,
-    docId: memoOut.docId,
+    docId: item?.docId ?? memoOut.docId,
     memoNo: memoOut.memoNo,
     docType: memoOut.docType,
     openDate: normalizeDate(memoOut.openDate),
@@ -367,7 +368,7 @@ const createInventoryMovement = async ({
       documentType: "MEMO_OUT",
       documentId: document.id,
       documentNo: document.memoNo,
-      docId: document.docId,
+      docId: item.docId ?? document.docId,
       companyId: item.companyId,
       departmentId: item.departmentId,
       createdById: userId,
@@ -873,6 +874,9 @@ export const getMemoOuts = async (req, res) => {
   if (searchValue) {
     where.OR = [
       /^\d+$/.test(searchValue) ? { docId: Number(searchValue) } : undefined,
+      /^\d+$/.test(searchValue)
+        ? { inventoryItem: { docId: Number(searchValue) } }
+        : undefined,
       /^\d+$/.test(searchValue)
         ? { inventoryItem: { lotId: Number(searchValue) } }
         : undefined,
