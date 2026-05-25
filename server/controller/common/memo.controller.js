@@ -177,12 +177,11 @@ const resolveMemoAccount = async ({ accountId, companyId }) =>
     },
   });
 
-const resolveItemMasters = async ({ items, companyId }) => {
+const resolveItemMasters = async ({ items }) => {
   const itemMasterIds = [...new Set(items.map((item) => item.itemMasterId))];
   const itemMasters = await prisma.itemMaster.findMany({
     where: {
       id: { in: itemMasterIds },
-      companyId,
     },
     select: {
       id: true,
@@ -648,12 +647,9 @@ export const createMemo = async (req, res) => {
     });
   }
 
-  const itemMasters = await resolveItemMasters({
-    items: data.items,
-    companyId: department.companyId,
-  });
+  const itemMasters = await resolveItemMasters({ items: data.items });
   if (!itemMasters) {
-    return sendError(res, "Item not found for selected company", 404, {
+    return sendError(res, "Item not found", 404, {
       itemMasterId: ["Select a valid item"],
     });
   }

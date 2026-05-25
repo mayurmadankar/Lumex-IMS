@@ -149,7 +149,7 @@ export const getCompanies = async (req, res) => {
         },
       },
       _count: {
-        select: { departments: true },
+        select: { departments: true, users: true },
       },
       departments: {
         select: {
@@ -215,9 +215,47 @@ export const updateCompany = async (req, res) => {
     }
   }
 
-  const company = await prisma.company.update({
-    where: { id },
-    data,
+  const company = await prisma.$transaction(async (tx) => {
+    if (data.country) {
+      await tx.department.updateMany({
+        where: { companyId: id },
+        data: { country: data.country },
+      });
+    }
+
+    return tx.company.update({
+      where: { id },
+      data,
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        country: true,
+        companyEmail: true,
+        status: true,
+        createdAt: true,
+        primaryDepartment: {
+          select: {
+            id: true,
+            name: true,
+            country: true,
+            isActive: true,
+          },
+        },
+        _count: {
+          select: { departments: true },
+        },
+        departments: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            isActive: true,
+          },
+          orderBy: { name: "asc" },
+        },
+      },
+    });
   });
 
   return sendSuccess(res, "Company updated successfully", { company });
@@ -229,6 +267,9 @@ export const getCompany = async (req, res) => {
   const company = await prisma.company.findUnique({
     where: { id },
     include: {
+      _count: {
+        select: { departments: true, users: true },
+      },
       primaryDepartment: {
         select: {
           id: true,
@@ -249,6 +290,33 @@ export const getCompany = async (req, res) => {
             select: { userAccesses: true },
           },
         },
+        orderBy: { name: "asc" },
+      },
+      users: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          isActive: true,
+          createdAt: true,
+          _count: {
+            select: { departmentAccesses: true },
+          },
+          departmentAccesses: {
+            select: {
+              department: {
+                select: {
+                  id: true,
+                  name: true,
+                  company: {
+                    select: { id: true, name: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
       },
     },
   });

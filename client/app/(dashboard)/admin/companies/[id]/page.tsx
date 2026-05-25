@@ -10,21 +10,24 @@ import {
   LayoutGrid,
   Plus,
   X,
+  Eye,
 } from "lucide-react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 
 import { getCompany, createDepartment } from "@/api/services/company.service";
+import { AddUserModal } from "@/components/admin/user/userFormModal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Pagination from "@/components/ui/pagination";
 import { TableSearchBar } from "@/components/ui/table-search-bar";
-import { useCountries } from "@/hooks/useCountries";
 import { usePagination } from "@/hooks/use-pagination";
+import { useCountries } from "@/hooks/useCountries";
 import { matchesTableSearch } from "@/lib/table-search";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -37,6 +40,22 @@ type Department = {
   _count: { userAccesses: number };
 };
 
+type CompanyUser = {
+  id: string;
+  fullName: string;
+  email: string;
+  isActive: boolean;
+  createdAt: string;
+  _count: { departmentAccesses: number };
+  departmentAccesses: {
+    department: {
+      id: string;
+      name: string;
+      company: { id: string; name: string };
+    };
+  }[];
+};
+
 type Company = {
   id: string;
   name: string;
@@ -46,12 +65,12 @@ type Company = {
   status: "ACTIVE" | "INACTIVE";
   createdAt: string;
   departments: Department[];
-  _count: { departments: number };
+  users: CompanyUser[];
+  _count: { departments: number; users: number };
 };
 
 type DepartmentFormData = {
   name: string;
-  country: string;
   description?: string;
 };
 
@@ -136,7 +155,6 @@ function AddDepartmentModal({
   onCreated: (dept: Department) => void;
   companyId: string;
 }) {
-  const { countries, loading: countriesLoading } = useCountries();
   const {
     register,
     handleSubmit,
@@ -225,24 +243,6 @@ function AddDepartmentModal({
               />
             </Field>
 
-            <Field label="Country" required error={errors.country?.message}>
-              <select
-                className="w-full rounded-xl border bg-background px-3 py-2 text-sm"
-                {...register("country", { required: "Country is required" })}
-              >
-                <option value="">
-                  {countriesLoading
-                    ? "Loading countries..."
-                    : "Choose a country..."}
-                </option>
-                {countries.map((country) => (
-                  <option key={country.id} value={country.iso2}>
-                    {country.name} ({country.iso2})
-                  </option>
-                ))}
-              </select>
-            </Field>
-
             <Field label="Description" error={errors.description?.message}>
               <Input
                 placeholder="e.g. Handles all financial operations"
@@ -296,7 +296,9 @@ export default function CompanyDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [userModalOpen, setUserModalOpen] = useState(false);
   const [departmentSearch, setDepartmentSearch] = useState("");
+  const [userSearch, setUserSearch] = useState("");
 
   useEffect(() => {
     const fetchCompany = async () => {
@@ -322,15 +324,52 @@ export default function CompanyDetailsPage() {
               ...prev.departments,
               { ...dept, _count: { userAccesses: 0 } },
             ],
-            _count: { departments: prev._count?.departments + 1 },
+            _count: {
+              ...prev._count,
+              departments:
+                (prev._count?.departments ?? prev.departments.length) + 1,
+            },
           }
         : prev,
     );
+    setDepartmentSearch("");
+  };
+  const handleUserCreated = (createdUser: CompanyUser) => {
+    const departmentIds = new Set(
+      createdUser.departmentAccesses?.map((access) => access.department.id) ?? [],
+    );
+
+    setCompany((prev) =>
+      prev
+        ? {
+            ...prev,
+            departments: prev.departments.map((department) =>
+              departmentIds.has(department.id)
+                ? {
+                    ...department,
+                    _count: {
+                      userAccesses:
+                        (department._count?.userAccesses ?? 0) + 1,
+                    },
+                  }
+                : department,
+            ),
+            users: [createdUser, ...(prev.users ?? [])],
+            _count: {
+              ...prev._count,
+              users: (prev._count?.users ?? 0) + 1,
+            },
+          }
+        : prev,
+    );
+    setUserSearch("");
+    toast.success("User created successfully");
   };
   const departments = useMemo(
     () => company?.departments ?? [],
     [company?.departments],
   );
+  const users = useMemo(() => company?.users ?? [], [company?.users]);
   const filteredDepartments = useMemo(() => {
     const value = departmentSearch.trim();
     if (!value) return departments;
@@ -350,6 +389,25 @@ export default function CompanyDetailsPage() {
   }, [countries, departmentSearch, departments]);
   const { paginatedItems: paginatedDepartments, ...departmentPagination } =
     usePagination(filteredDepartments);
+  const filteredUsers = useMemo(() => {
+    const value = userSearch.trim();
+    if (!value) return users;
+
+    return users.filter((user) =>
+      matchesTableSearch(
+        [
+          user.fullName,
+          user.email,
+          user._count?.departmentAccesses,
+          user.isActive ? "Active" : "Inactive",
+          ...user.departmentAccesses.map((access) => access.department.name),
+        ],
+        value,
+      ),
+    );
+  }, [userSearch, users]);
+  const { paginatedItems: paginatedUsers, ...userPagination } =
+    usePagination(filteredUsers);
 
   if (loading) {
     return (
@@ -379,15 +437,25 @@ export default function CompanyDetailsPage() {
             </h1>
             <p className="text-sm text-muted-foreground">Company Details</p>
           </div>
-          <span
-            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
-              company.status === "ACTIVE"
-                ? "bg-green-100 text-green-700"
-                : "bg-muted text-muted-foreground"
-            }`}
-          >
-            {company.status === "ACTIVE" ? "Active" : "Inactive"}
-          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => setUserModalOpen(true)}
+            >
+              <Users className="mr-2 h-4 w-4" />
+              Add User
+            </Button>
+            <span
+              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+                company.status === "ACTIVE"
+                  ? "bg-green-100 text-green-700"
+                  : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {company.status === "ACTIVE" ? "Active" : "Inactive"}
+            </span>
+          </div>
         </div>
 
         {/* Info Cards */}
@@ -431,7 +499,7 @@ export default function CompanyDetailsPage() {
                   <span className="text-xs">Departments</span>
                 </div>
                 <p className="mt-2 text-3xl font-semibold">
-                  {company?._count?.departments}
+                  {company._count?.departments ?? departments.length}
                 </p>
               </div>
               <div className="rounded-xl border bg-muted/20 p-4">
@@ -440,10 +508,7 @@ export default function CompanyDetailsPage() {
                   <span className="text-xs">Total Users</span>
                 </div>
                 <p className="mt-2 text-3xl font-semibold">
-                  {company.departments.reduce(
-                    (sum, d) => sum + d._count?.userAccesses,
-                    0,
-                  )}
+                  {company._count?.users ?? 0}
                 </p>
               </div>
             </CardContent>
@@ -460,7 +525,7 @@ export default function CompanyDetailsPage() {
             </Button>
           </CardHeader>
           <CardContent className="space-y-4">
-            {company.departments.length === 0 ? (
+            {departments.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 No departments yet. Add one to get started.
               </p>
@@ -534,6 +599,102 @@ export default function CompanyDetailsPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Users */}
+        <Card className="rounded-2xl">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Users</CardTitle>
+            <Button
+              className="rounded-xl"
+              onClick={() => setUserModalOpen(true)}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add User
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {users.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No users yet. Add one to get started.
+              </p>
+            ) : (
+              <>
+                <TableSearchBar
+                  search={userSearch}
+                  onSearch={setUserSearch}
+                  placeholder="Search users"
+                />
+                {filteredUsers.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">
+                    No users found.
+                  </p>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-125 text-sm">
+                        <thead>
+                          <tr className="border-b text-left text-muted-foreground">
+                            <th className="py-3 font-medium">Name</th>
+                            <th className="py-3 font-medium">Email</th>
+                            <th className="py-3 font-medium">Departments</th>
+                            <th className="py-3 font-medium">Status</th>
+                            <th className="py-3 font-medium">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {paginatedUsers.map((user) => (
+                            <tr
+                              key={user.id}
+                              className="border-b last:border-0"
+                            >
+                              <td className="py-4 font-medium">
+                                {user.fullName}
+                              </td>
+                              <td className="py-4 text-muted-foreground">
+                                {user.email}
+                              </td>
+                              <td className="py-4">
+                                {user._count?.departmentAccesses}
+                              </td>
+                              <td className="py-4">
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                    user.isActive
+                                      ? "bg-green-100 text-green-700"
+                                      : "bg-muted text-muted-foreground"
+                                  }`}
+                                >
+                                  {user.isActive ? "Active" : "Inactive"}
+                                </span>
+                              </td>
+                              <td className="py-4">
+                                <Link
+                                  href={`/admin/users/${user.id}`}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition hover:bg-muted"
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                  View
+                                </Link>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <Pagination
+                      page={userPagination.page}
+                      totalPages={userPagination.totalPages}
+                      start={userPagination.start}
+                      end={userPagination.end}
+                      total={userPagination.total}
+                      onPageChange={userPagination.setPage}
+                    />
+                  </>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <AddDepartmentModal
@@ -541,6 +702,17 @@ export default function CompanyDetailsPage() {
         onClose={() => setModalOpen(false)}
         onCreated={handleDepartmentCreated}
         companyId={company.id}
+      />
+      <AddUserModal
+        open={userModalOpen}
+        onClose={() => setUserModalOpen(false)}
+        onCreated={handleUserCreated}
+        lockedCompany={{
+          id: company.id,
+          name: company.name,
+          code: company.code,
+          departments: company.departments,
+        }}
       />
     </>
   );

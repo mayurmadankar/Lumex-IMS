@@ -159,6 +159,10 @@ export default function TransferListPage() {
           transfer.notes,
           transfer.company.name,
           transfer.company.code,
+          transfer.fromDepartment.company?.name,
+          transfer.fromDepartment.company?.code,
+          transfer.toDepartment.company?.name,
+          transfer.toDepartment.company?.code,
           transfer.fromDepartment.name,
           transfer.toDepartment.name,
           transfer.toUser?.fullName,
@@ -251,7 +255,7 @@ export default function TransferListPage() {
         ) : (
           <div className="overflow-hidden rounded-2xl border bg-background">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1980px] text-sm">
+              <table className="w-full min-w-[2160px] text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
                     <th className="px-3 py-3 font-medium">Type</th>
@@ -259,7 +263,9 @@ export default function TransferListPage() {
                     <th className="px-3 py-3 font-medium">Doc ID</th>
                     <th className="px-3 py-3 font-medium">Lot ID</th>
                     <th className="px-3 py-3 font-medium">Item</th>
+                    <th className="px-3 py-3 font-medium">From Company</th>
                     <th className="px-3 py-3 font-medium">From Department</th>
+                    <th className="px-3 py-3 font-medium">To Company</th>
                     <th className="px-3 py-3 font-medium">To Department</th>
                     <th className="px-3 py-3 font-medium">To Employee</th>
                     <th className="px-3 py-3 font-medium">Returned By</th>
@@ -288,7 +294,15 @@ export default function TransferListPage() {
                       </td>
                       <td className="px-3 py-3">{itemName(transfer)}</td>
                       <td className="px-3 py-3">
+                        {transfer.fromDepartment.company?.name ??
+                          transfer.company.name}
+                      </td>
+                      <td className="px-3 py-3">
                         {transfer.fromDepartment.name}
+                      </td>
+                      <td className="px-3 py-3">
+                        {transfer.toDepartment.company?.name ??
+                          transfer.company.name}
                       </td>
                       <td className="px-3 py-3">
                         {transfer.toDepartment.name}

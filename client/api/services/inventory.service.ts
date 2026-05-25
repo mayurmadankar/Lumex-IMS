@@ -117,7 +117,7 @@ export async function getInventoryItems(
     departmentId?: string;
     companyId?: string;
     search?: string;
-  },
+  } = {},
 ) {
   const response = await axiosInstance.get(`/api/${scope}/inventory-items`, {
     params,

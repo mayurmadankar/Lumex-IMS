@@ -18,7 +18,9 @@ const optionalString = () =>
 const docDateSchema = z.preprocess(emptyToUndefined, z.string().trim().optional());
 
 const createTransferSchema = z.object({
+  transferMode: z.enum(["DEPARTMENT", "COMPANY"]).default("DEPARTMENT"),
   companyId: z.string({ required_error: "companyId is required" }).uuid("Invalid company"),
+  destinationCompanyId: z.preprocess(emptyToUndefined, z.string().uuid("Invalid destination company").optional()),
   inventoryItemId: z.string({ required_error: "Select an inventory item" }).uuid("Invalid inventory item"),
   toDepartmentId: z.string({ required_error: "Select a department" }).uuid("Invalid department"),
   toUserId: z.string({ required_error: "Select an employee" }).uuid("Invalid employee"),
@@ -54,6 +56,9 @@ const buildPrefix = (company) =>
 
 const buildTransferNo = (company, number) =>
   `${buildPrefix(company)}-TRF-${String(number).padStart(6, "0")}`;
+
+const buildItemId = (company, lotId) =>
+  `${buildPrefix(company)}-ITEM-${String(lotId).padStart(6, "0")}`;
 
 const transferableStockOriginWhere = {
   OR: [
@@ -92,10 +97,52 @@ const reserveTransferSequence = async ({ tx, companyId }) => {
   };
 };
 
+const reserveDestinationInventoryLot = async ({ tx, companyId }) => {
+  const maxLot = await tx.inventoryItem.aggregate({
+    where: { companyId },
+    _max: { lotId: true },
+  });
+  const nextLotFloor = Number(maxLot._max.lotId ?? 0) + 2;
+
+  const rows = await tx.$queryRaw`
+    INSERT INTO "InventorySequence" (
+      "companyId",
+      "nextLotId",
+      "nextDocumentNumber",
+      "nextPurchaseNoteNumber",
+      "nextMemoNumber",
+      "nextInvoiceNumber",
+      "nextTransferNumber",
+      "updatedAt"
+    )
+    VALUES (${companyId}, ${nextLotFloor}, 1, 1, 1, 1, 1, NOW())
+    ON CONFLICT ("companyId")
+    DO UPDATE SET
+      "nextLotId" = GREATEST("InventorySequence"."nextLotId" + 1, ${nextLotFloor}),
+      "updatedAt" = NOW()
+    RETURNING "nextLotId";
+  `;
+
+  const nextLotId = Number(rows[0]?.nextLotId ?? 2);
+  return nextLotId - 1;
+};
+
 const transferInclude = {
   company: { select: { id: true, name: true, code: true } },
-  fromDepartment: { select: { id: true, name: true } },
-  toDepartment: { select: { id: true, name: true } },
+  fromDepartment: {
+    select: {
+      id: true,
+      name: true,
+      company: { select: { id: true, name: true, code: true } },
+    },
+  },
+  toDepartment: {
+    select: {
+      id: true,
+      name: true,
+      company: { select: { id: true, name: true, code: true } },
+    },
+  },
   toUser: { select: { id: true, fullName: true, email: true } },
   createdBy: { select: { id: true, fullName: true, email: true } },
   inventoryItem: {
@@ -153,7 +200,11 @@ const mapTransfer = (transfer) => ({
   id: transfer.id,
   docId: transfer.inventoryItem?.docId ?? transfer.docId,
   transferNo: transfer.transferNo,
-  docType: isTransferReturn(transfer) ? "Transfer Return" : "Transfer",
+  docType: isTransferReturn(transfer)
+    ? "Transfer Return"
+    : isCompanyTransfer(transfer)
+      ? "Company Transfer"
+      : "Transfer",
   docDate: normalizeDate(transfer.docDate),
   referenceDocNo: transfer.referenceDocNo,
   notes: transfer.notes,
@@ -170,6 +221,11 @@ const mapTransfer = (transfer) => ({
 
 const isTransferReturn = (transfer) =>
   String(transfer.referenceDocNo ?? "").includes("Transfer Return:");
+
+const isCompanyTransfer = (transfer) =>
+  transfer.fromDepartment?.company?.id &&
+  transfer.toDepartment?.company?.id &&
+  transfer.fromDepartment.company.id !== transfer.toDepartment.company.id;
 
 const mapTransferReturnCandidate = ({ inventoryItem, transfer }) => ({
   inventoryItem: mapInventoryItemSummary(inventoryItem),
@@ -275,6 +331,8 @@ export const createTransfer = async (req, res) => {
   }
 
   const data = result.data;
+  const isCompanyMode = data.transferMode === "COMPANY";
+  const destinationCompanyId = isCompanyMode ? data.destinationCompanyId : data.companyId;
 
   if (
     !(await userCanAccessCompany({
@@ -284,6 +342,30 @@ export const createTransfer = async (req, res) => {
     }))
   ) {
     return sendError(res, "Company access denied", 403);
+  }
+
+  if (isCompanyMode) {
+    if (!destinationCompanyId) {
+      return sendError(res, "Select a destination company", 400, {
+        destinationCompanyId: ["Select a destination company"],
+      });
+    }
+
+    if (destinationCompanyId === data.companyId) {
+      return sendError(res, "Select a different destination company", 400, {
+        destinationCompanyId: ["Select a different destination company"],
+      });
+    }
+
+    if (
+      !(await userCanAccessCompany({
+        userId: req.user.userId,
+        userRole: req.user.role,
+        companyId: destinationCompanyId,
+      }))
+    ) {
+      return sendError(res, "Destination company access denied", 403);
+    }
   }
 
   const inventoryItem = await prisma.inventoryItem.findFirst({
@@ -319,7 +401,7 @@ export const createTransfer = async (req, res) => {
     return sendError(res, "You do not have transfer write access for this item department", 403);
   }
 
-  if (inventoryItem.departmentId === data.toDepartmentId) {
+  if (!isCompanyMode && inventoryItem.departmentId === data.toDepartmentId) {
     return sendError(res, "Select a different destination department", 400, {
       toDepartmentId: ["Select a different destination department"],
     });
@@ -329,13 +411,14 @@ export const createTransfer = async (req, res) => {
     prisma.department.findFirst({
       where: {
         id: data.toDepartmentId,
-        companyId: data.companyId,
+        companyId: destinationCompanyId,
         isActive: true,
       },
       select: {
         id: true,
         name: true,
         companyId: true,
+        company: { select: { id: true, name: true, code: true } },
       },
     }),
     prisma.userDepartmentAccess.findUnique({
@@ -383,6 +466,12 @@ export const createTransfer = async (req, res) => {
         tx,
         companyId: data.companyId,
       });
+      const destinationLotId = isCompanyMode
+        ? await reserveDestinationInventoryLot({
+            tx,
+            companyId: destinationCompanyId,
+          })
+        : null;
       const transferNo = buildTransferNo(
         inventoryItem.company,
         sequence.transferNumber,
@@ -413,6 +502,14 @@ export const createTransfer = async (req, res) => {
           ...transferableStockOriginWhere,
         },
         data: {
+          ...(isCompanyMode
+            ? {
+                companyId: destinationCompanyId,
+                itemId: buildItemId(toDepartment.company, destinationLotId),
+                docId: destinationLotId,
+                lotId: destinationLotId,
+              }
+            : {}),
           departmentId: toDepartment.id,
           departmentAccountName: toDepartment.name,
           locationAccountName: toDepartment.name,
@@ -433,11 +530,16 @@ export const createTransfer = async (req, res) => {
           documentId: created.id,
           documentNo: transferNo,
           docId: inventoryItem.docId ?? sequence.documentNumber,
-          companyId: data.companyId,
+          companyId: isCompanyMode ? destinationCompanyId : data.companyId,
           departmentId: toDepartment.id,
           createdById: req.user.userId,
           metadata: {
+            transferMode: data.transferMode,
             referenceDocNo: data.referenceDocNo ?? null,
+            sourceCompanyId: data.companyId,
+            sourceCompanyName: inventoryItem.company.name,
+            destinationCompanyId,
+            destinationCompanyName: toDepartment.company.name,
             fromDepartmentId: inventoryItem.departmentId,
             fromDepartmentName: inventoryItem.department.name,
             toDepartmentId: toDepartment.id,
@@ -445,6 +547,7 @@ export const createTransfer = async (req, res) => {
             toUserId: toUserAccess.user.id,
             toUserName: toUserAccess.user.fullName,
             lotId: inventoryItem.lotId,
+            newLotId: destinationLotId,
           },
         },
       });
@@ -743,7 +846,6 @@ export const getTransfers = async (req, res) => {
     });
     if (!canRead) return sendError(res, "Transfer list access denied", 403);
 
-    where.companyId = department.companyId;
     where.OR = [
       { fromDepartmentId: department.id },
       { toDepartmentId: department.id },
@@ -763,7 +865,6 @@ export const getTransfers = async (req, res) => {
       return sendError(res, "Transfer list access denied for this company", 403);
     }
 
-    where.companyId = String(companyId);
     where.OR = [
       { fromDepartmentId: { in: departmentIds } },
       { toDepartmentId: { in: departmentIds } },

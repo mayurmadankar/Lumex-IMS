@@ -1,6 +1,5 @@
 import prisma from "../../prisma/client.js";
 import { sendError, sendSuccess } from "../../helper/response.js";
-import { getCountryIso2 } from "../../helper/validateCountry.js";
 import {
   buildDefaultPermissions,
   MODULE_KEYS,
@@ -11,8 +10,6 @@ import { z } from "zod";
 
 const createDepartmentSchema = z.object({
   name: z.string({ required_error: "name is required" }).trim().min(2, "name must be at least 2 characters"),
-
-  country: z.string({ required_error: "country is required" }).trim().min(2, "country must be at least 2 characters"),
 
   description: z.string().trim().optional(),
 });
@@ -48,18 +45,11 @@ export const createDepartment = async (req, res) => {
     return sendError(res, "Validation failed", 400, result.error.flatten().fieldErrors);
   }
 
-  const { name, country, description } = result.data;
-  const countryIso2 = await getCountryIso2(country);
-
-  if (!countryIso2) {
-    return sendError(res, "Country is not available in country master", 400, {
-      country: ["Select a valid country"],
-    });
-  }
+  const { name, description } = result.data;
 
   const company = await prisma.company.findUnique({
     where: { id: companyId },
-    select: { id: true },
+    select: { id: true, country: true },
   });
   if (!company) return sendError(res, "Company not found", 404);
 
@@ -71,7 +61,17 @@ export const createDepartment = async (req, res) => {
   if (existing) return sendError(res, "A department with this name already exists", 409);
 
   const department = await prisma.department.create({
-    data: { name, country: countryIso2, description, companyId },
+    data: { name, country: company.country, description, companyId },
+    select: {
+      id: true,
+      name: true,
+      country: true,
+      description: true,
+      isActive: true,
+      _count: {
+        select: { userAccesses: true },
+      },
+    },
   });
 
   return sendSuccess(res, "Department created successfully", { department }, 201);

@@ -29,7 +29,6 @@ const pathTitleOverrides: Record<string, string> = {
   "/user/accounting/accounts": "Accounts",
   "/user/accounting/new-account": "New Account",
   "/user/inventory/inventory-list": "Inventory List",
-  "/user/inventory/item-list": "Item List",
   "/user/inventory/memo-in-inventory": "Memo In Inventory",
   "/user/invoice/invoices": "Invoices",
   "/user/invoice/new-invoice": "New Invoice",
@@ -54,6 +53,7 @@ const pathTitleOverrides: Record<string, string> = {
   "/admin": "Admin Dashboard",
   "/admin/billing": "Billing",
   "/admin/companies": "Companies",
+  "/admin/item-list": "Item List",
   "/admin/users": "Users",
 };
 

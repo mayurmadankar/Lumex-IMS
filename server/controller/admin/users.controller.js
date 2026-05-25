@@ -120,6 +120,12 @@ export const createUser = async (req, res) => {
       role: true,
       isActive: true,
       createdAt: true,
+      company: {
+        select: { id: true, name: true },
+      },
+      _count: {
+        select: { departmentAccesses: true },
+      },
       departmentAccesses: {
         select: {
           id: true,

@@ -1,12 +1,11 @@
 import axiosInstance from "@/api/axios";
 
-type Scope = "user";
+type Scope = "user" | "admin";
 
 export type UnitOfWeight = "CARATS" | "GRAMS";
 export type UnitOfMeasurement = "PCS" | "WEIGHT";
 
 export type ItemPayload = {
-  departmentId: string;
   itemName: string;
   itemType: string;
   uow: UnitOfWeight;
@@ -21,11 +20,11 @@ export type ItemListItem = {
   uow: UnitOfWeight;
   uom: UnitOfMeasurement;
   createdAt: string;
-  company: {
+  company?: {
     id: string;
     name: string;
     code?: string | null;
-  };
+  } | null;
   createdBy?: {
     id: string;
     fullName: string;
@@ -38,12 +37,23 @@ export async function createItem(scope: Scope, payload: ItemPayload) {
   return response.data;
 }
 
+export async function updateItem(scope: Scope, id: string, payload: ItemPayload) {
+  const response = await axiosInstance.patch(`/api/${scope}/items/${id}`, payload);
+  return response.data;
+}
+
+export async function deleteItem(scope: Scope, id: string) {
+  const response = await axiosInstance.delete(`/api/${scope}/items/${id}`);
+  return response.data;
+}
+
 export async function getItems(
   scope: Scope,
   params: {
-    departmentId: string;
+    departmentId?: string;
+    companyId?: string;
     search?: string;
-  },
+  } = {},
 ) {
   const response = await axiosInstance.get(`/api/${scope}/items`, { params });
   return response.data;

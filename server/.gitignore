@@ -17,6 +17,10 @@ prisma/migrations/*
 !prisma/migrations/20260520000100_memo_out_management/migration.sql
 !prisma/migrations/20260522000100_password_reset_otp/
 !prisma/migrations/20260522000100_password_reset_otp/migration.sql
+!prisma/migrations/20260525000100_remove_user_item_list_permission/
+!prisma/migrations/20260525000100_remove_user_item_list_permission/migration.sql
+!prisma/migrations/20260525000200_make_item_master_global/
+!prisma/migrations/20260525000200_make_item_master_global/migration.sql
 *.db
 *.db-journal
 

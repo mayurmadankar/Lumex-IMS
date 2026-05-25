@@ -429,66 +429,10 @@ const reserveInternalReceiptSequence = async ({ tx, companyId }) => {
   };
 };
 
-const reserveItemId = async ({ tx, companyId }) => {
-  const rows = await tx.$queryRaw`
-    INSERT INTO "ItemSequence" ("companyId", "nextNumber", "updatedAt")
-    VALUES (${companyId}, 101, NOW())
-    ON CONFLICT ("companyId")
-    DO UPDATE SET
-      "nextNumber" = "ItemSequence"."nextNumber" + 1,
-      "updatedAt" = NOW()
-    RETURNING "nextNumber";
-  `;
-
-  return Number(rows[0]?.nextNumber ?? 101) - 1;
-};
-
-const resolveDestinationItemMaster = async ({
-  tx,
-  sourceItemMaster,
-  companyId,
-  userId,
-}) => {
+const resolveDestinationItemMaster = async ({ sourceItemMaster }) => {
   if (!sourceItemMaster) return null;
 
-  const existing = await tx.itemMaster.findFirst({
-    where: {
-      companyId,
-      itemName: sourceItemMaster.itemName,
-    },
-    select: {
-      id: true,
-      itemId: true,
-      itemName: true,
-      itemType: true,
-      uow: true,
-      uom: true,
-    },
-  });
-
-  if (existing) return existing;
-
-  const itemId = await reserveItemId({ tx, companyId });
-
-  return tx.itemMaster.create({
-    data: {
-      itemId,
-      itemName: sourceItemMaster.itemName,
-      itemType: sourceItemMaster.itemType,
-      uow: sourceItemMaster.uow,
-      uom: sourceItemMaster.uom,
-      companyId,
-      createdById: userId,
-    },
-    select: {
-      id: true,
-      itemId: true,
-      itemName: true,
-      itemType: true,
-      uow: true,
-      uom: true,
-    },
-  });
+  return sourceItemMaster;
 };
 
 const createInventoryMovements = async ({
@@ -1021,10 +965,7 @@ export const createInvoiceFromInventory = async (req, res) => {
           destinationSequence.purchaseNoteNumber,
         );
         const destinationItemMaster = await resolveDestinationItemMaster({
-          tx,
           sourceItemMaster: inventoryItem.itemMaster,
-          companyId: sourceCompany.id,
-          userId: req.user.userId,
         });
 
         destinationReceipt = await tx.purchaseNote.create({

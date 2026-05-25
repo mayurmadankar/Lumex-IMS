@@ -406,7 +406,7 @@ const createInventoryMovement = async ({
     },
   });
 
-const resolveItemMasters = async ({ companyId, parts }) => {
+const resolveItemMasters = async ({ parts }) => {
   const itemMasterIds = [
     ...new Set(parts.map((part) => part.itemMasterId).filter(Boolean)),
   ];
@@ -416,7 +416,6 @@ const resolveItemMasters = async ({ companyId, parts }) => {
   const itemMasters = await prisma.itemMaster.findMany({
     where: {
       id: { in: itemMasterIds },
-      companyId,
     },
     select: {
       id: true,
@@ -875,12 +874,9 @@ export const returnProductionParts = async (req, res) => {
     return sendError(res, "Open process document not found for selected item", 404);
   }
 
-  const itemMasters = await resolveItemMasters({
-    companyId: data.companyId,
-    parts: data.parts,
-  });
+  const itemMasters = await resolveItemMasters({ parts: data.parts });
   if (!itemMasters) {
-    return sendError(res, "Item not found for selected company", 404, {
+    return sendError(res, "Item not found", 404, {
       itemMasterId: ["Select a valid item"],
     });
   }

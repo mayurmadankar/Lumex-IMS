@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npx prisma *)",
-      "PowerShell(Get-Command psql -ErrorAction SilentlyContinue)"
+      "PowerShell(Get-Command psql -ErrorAction SilentlyContinue)",
+      "Bash(node -e \"console.log\\(process.versions\\)\")",
+      "Bash(node -e \"const {getRuntime} = require\\('@prisma/client/runtime/library.js'\\); console.log\\(getRuntime\\(\\)\\);\")"
     ]
   }
 }

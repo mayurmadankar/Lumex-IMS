@@ -170,9 +170,6 @@ export default function InventoryListPage() {
     (state) =>
       state.company.selectedCompanyId ?? state.auth.user?.selectedCompanyId,
   );
-  const persistedPermissions = useAppSelector(
-    (state) => state.permission.permissions,
-  );
   const [inventoryItems, setInventoryItems] = useState<InventoryItemListItem[]>(
     [],
   );
@@ -250,46 +247,28 @@ export default function InventoryListPage() {
     () =>
       departmentAccesses.filter(
         (access) =>
-          access.companyId !== currentCompany?.id &&
+          access.companyId !== (invoiceItem?.company?.id ?? currentCompany?.id) &&
           access.companyStatus !== "INACTIVE" &&
           permissionAllows(
             permissionsToMap(access.permissions).INVENTORY_LIST,
             "READ_ONLY",
           ),
       ),
-    [currentCompany?.id, departmentAccesses],
+    [currentCompany?.id, departmentAccesses, invoiceItem?.company?.id],
   );
-  const permissionMap = selectedAccess
-    ? permissionsToMap(selectedAccess.permissions)
-    : persistedPermissions;
-  const companyDepartmentAccesses = useMemo(
-    () =>
-      departmentAccesses.filter(
-        (access) => access.companyId === currentCompany?.id,
-      ),
-    [currentCompany?.id, departmentAccesses],
-  );
-  const canReadInventory = currentCompany
-    ? companyDepartmentAccesses.some((access) =>
-        permissionAllows(
-          permissionsToMap(access.permissions).INVENTORY_LIST,
-          "READ_ONLY",
-        ),
-      )
-    : permissionAllows(permissionMap.INVENTORY_LIST, "READ_ONLY");
-  const hasAnyReturnInventory = companyDepartmentAccesses.some((access) =>
+  const hasAnyReturnInventory = departmentAccesses.some((access) =>
     permissionAllows(
       permissionsToMap(access.permissions).NEW_PURCH_NOTE_RTN,
       "READ_WRITE",
     ),
   );
-  const hasAnyCreateInvoice = companyDepartmentAccesses.some((access) =>
+  const hasAnyCreateInvoice = departmentAccesses.some((access) =>
     permissionAllows(
       permissionsToMap(access.permissions).NEW_INVOICE,
       "READ_WRITE",
     ),
   );
-  const hasAnyTransfer = companyDepartmentAccesses.some((access) =>
+  const hasAnyTransfer = departmentAccesses.some((access) =>
     permissionAllows(
       permissionsToMap(access.permissions).NEW_TRANSFER,
       "READ_WRITE",
@@ -332,18 +311,11 @@ export default function InventoryListPage() {
   );
 
   useEffect(() => {
-    if (!canReadInventory || !currentCompany?.id) {
-      setLoading(false);
-      return;
-    }
-
     const loadInventoryItems = async () => {
       try {
         setLoading(true);
         setError(null);
-        const response = await getInventoryItems("user", {
-          companyId: currentCompany?.id,
-        });
+        const response = await getInventoryItems("user");
         setInventoryItems(response.data.inventoryItems ?? []);
       } catch {
         setError("Failed to load inventory.");
@@ -353,7 +325,7 @@ export default function InventoryListPage() {
     };
 
     loadInventoryItems();
-  }, [canReadInventory, currentCompany?.id]);
+  }, []);
 
   useEffect(() => {
     const availableIds = new Set(inventoryItems.map((item) => item.id));
@@ -760,16 +732,6 @@ export default function InventoryListPage() {
       setIsCreatingInvoice(false);
     }
   };
-
-  if (!canReadInventory) {
-    return (
-      <div className="p-6">
-        <div className="rounded-2xl border border-dashed bg-background px-6 py-12 text-center text-sm text-muted-foreground">
-          You do not have permission to view inventory in this company.
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-muted/30 p-4 sm:p-6">
@@ -1327,7 +1289,7 @@ export default function InventoryListPage() {
       >
         <ModalBody className="max-h-[75vh] overflow-y-auto">
           <TransferForm
-            companyId={currentCompany?.id ?? null}
+            companyId={transferItem?.company?.id ?? currentCompany?.id ?? null}
             initialItem={transferItem}
             onCancel={closeTransferModal}
             onTransferred={handleTransferCreated}

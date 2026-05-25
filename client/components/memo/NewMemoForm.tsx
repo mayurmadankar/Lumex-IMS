@@ -112,15 +112,12 @@ function companyLabel(company: CompanyOption) {
 }
 
 function departmentOptionLabel(access: DepartmentAccessOption) {
-  const company = access.companyCode
-    ? `${access.companyName} (${access.companyCode})`
-    : access.companyName;
-  return `${company} - ${access.departmentName}`;
+  return access.departmentName;
 }
 
 function accessAllows(
   access: DepartmentAccessOption,
-  module: "NEW_MEMO_IN" | "ITEM_LIST" | "ACCOUNT_LIST",
+  module: "NEW_MEMO_IN" | "ACCOUNT_LIST",
   required: "READ_ONLY" | "READ_WRITE",
 ) {
   return permissionAllows(permissionsToMap(access.permissions)[module], required);
@@ -197,10 +194,6 @@ export default function NewMemoForm() {
     : ({} as ReturnType<typeof permissionsToMap>);
   const canReadAccounts = permissionAllows(
     selectedPermissionMap.ACCOUNT_LIST,
-    "READ_ONLY",
-  );
-  const canReadItems = permissionAllows(
-    selectedPermissionMap.ITEM_LIST,
     "READ_ONLY",
   );
 
@@ -378,13 +371,6 @@ export default function NewMemoForm() {
         return;
       }
 
-      if (!canReadItems) {
-        setItems([]);
-        setItemsLoading(false);
-        setItemsError("Item List read permission is required to select items.");
-        return;
-      }
-
       try {
         setItemsLoading(true);
         setItemsError(null);
@@ -401,7 +387,7 @@ export default function NewMemoForm() {
     };
 
     loadItems();
-  }, [canReadItems, selectedDepartmentId]);
+  }, [selectedDepartmentId]);
 
   const handlePaymentTermChange = (value: string) => {
     const nextPaymentTerm = normalizePaymentTerm(value);
@@ -425,18 +411,13 @@ export default function NewMemoForm() {
       return;
     }
 
-    if (!canReadItems) {
-      toast.error("Item List read permission is required to select items.");
-      return;
-    }
-
     if (itemsLoading) {
       toast.error("Items are still loading.");
       return;
     }
 
     if (items.length === 0) {
-      toast.error("No items available for this department company.");
+      toast.error("No items available.");
       return;
     }
 
@@ -489,11 +470,6 @@ export default function NewMemoForm() {
 
     if (!canReadAccounts) {
       toast.error("Account List read permission is required to select a vendor.");
-      return;
-    }
-
-    if (!canReadItems) {
-      toast.error("Item List read permission is required to select items.");
       return;
     }
 
@@ -791,7 +767,7 @@ export default function NewMemoForm() {
               variant="outline"
               className="h-9 rounded-xl"
               onClick={handleAddLine}
-              disabled={!selectedDepartmentId || !canReadItems || itemsLoading || items.length === 0}
+              disabled={!selectedDepartmentId || itemsLoading || items.length === 0}
             >
               <Plus className="h-4 w-4" />
               Add Line
@@ -803,7 +779,7 @@ export default function NewMemoForm() {
               {vendorsError ? <p>{vendorsError}</p> : null}
               {itemsError ? <p>{itemsError}</p> : null}
               {!itemsLoading && items.length === 0 && !itemsError ? (
-                <p>No item master records found for this department company.</p>
+                <p>No item master records found.</p>
               ) : null}
             </div>
           )}

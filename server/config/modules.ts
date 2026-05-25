@@ -14,7 +14,6 @@ export const PERMISSION_LEVELS = ["NONE", "READ_ONLY", "READ_WRITE"] as const;
 export const MODULE_DEFINITIONS = [
   { key: "INVENTORY_LIST", title: "Inventory List", group: "Inventory", requiredPermission: "READ_ONLY" },
   { key: "MEMO_IN_INVENTORY", title: "Memo In Inventory", group: "Inventory", requiredPermission: "READ_ONLY" },
-  { key: "ITEM_LIST", title: "Item List", group: "Inventory", requiredPermission: "READ_ONLY" },
 
   { key: "CHANGE_LOCATION", title: "Change Location", group: "Production", requiredPermission: "READ_WRITE" },
   { key: "SEND_TO_PROCESS", title: "Send To Process", group: "Production", requiredPermission: "READ_WRITE" },

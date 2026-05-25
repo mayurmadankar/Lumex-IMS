@@ -1,5 +1,16 @@
-import { Plus, Loader2, Users, Trash2, ShieldCheck, Pencil } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  Plus,
+  Loader2,
+  Users,
+  Trash2,
+  ShieldCheck,
+  Pencil,
+  Eye,
+  EyeOff,
+  Search,
+  ChevronDown,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 
 import { getCompanies } from "@/api/services/company.service";
@@ -57,6 +68,7 @@ type Department = {
 type Company = {
   id: string;
   name: string;
+  code?: string;
   departments: Department[];
 };
 
@@ -85,6 +97,16 @@ const summarizePermissions = (permissions?: GroupPermission[]) => {
   return permissions.every((item) => item.permission === first)
     ? permissionLabels[first]
     : "Mixed";
+};
+
+const companyLabel = (company: Company) =>
+  company.code ? `${company.name} (${company.code})` : company.name;
+
+type AddUserModalProps = {
+  open: boolean;
+  onClose: () => void;
+  onCreated: (user: User) => void;
+  lockedCompany?: Company;
 };
 
 export function EditUserModal({ user, onClose, onUpdated }: { user: User | null; onClose: () => void; onUpdated: (updated: User) => void }) {
@@ -183,11 +205,19 @@ export function EditUserModal({ user, onClose, onUpdated }: { user: User | null;
   );
 }
 
-export function AddUserModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (user: User) => void }) {
+export function AddUserModal({
+  open,
+  onClose,
+  onCreated,
+  lockedCompany,
+}: AddUserModalProps) {
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [companySearch, setCompanySearch] = useState("");
+  const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false);
   const [deptCompanyFilter, setDeptCompanyFilter] = useState("");
   const [departmentPermissionPreset, setDepartmentPermissionPreset] =
     useState<PermissionLevel>("NONE");
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   const {
     register,
@@ -195,6 +225,7 @@ export function AddUserModal({ open, onClose, onCreated }: { open: boolean; onCl
     reset,
     setError,
     setValue,
+    clearErrors,
     control,
     formState: { errors, isSubmitting },
   } = useForm<UserFormData>({
@@ -202,8 +233,28 @@ export function AddUserModal({ open, onClose, onCreated }: { open: boolean; onCl
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: "departmentAccesses" });
+  const selectedCompanyId = useWatch({ control, name: "companyId" }) ?? "";
   const selectedDepartmentAccesses =
     useWatch({ control, name: "departmentAccesses" }) ?? [];
+  const companyOptions = useMemo(
+    () => (lockedCompany ? [lockedCompany] : companies),
+    [companies, lockedCompany],
+  );
+  const selectedCompany = companyOptions.find((company) => company.id === selectedCompanyId);
+  const selectedCompanyLabel = selectedCompany ? companyLabel(selectedCompany) : "";
+  const companySearchValue =
+    companySearch === selectedCompanyLabel ? "" : companySearch.trim().toLowerCase();
+  const filteredPrimaryCompanies = useMemo(
+    () =>
+      companySearchValue
+        ? companyOptions.filter((company) =>
+            [company.name, company.code]
+              .filter(Boolean)
+              .some((value) => value!.toLowerCase().includes(companySearchValue)),
+          )
+        : companyOptions,
+    [companyOptions, companySearchValue],
+  );
 
   useEffect(() => {
     const fetchCompanies = async () => {
@@ -212,16 +263,56 @@ export function AddUserModal({ open, onClose, onCreated }: { open: boolean; onCl
         setCompanies(res.data.companies);
       } catch {}
     };
-    if (open) fetchCompanies();
-  }, [open]);
+    if (open && !lockedCompany) fetchCompanies();
+  }, [lockedCompany, open]);
+
+  useEffect(() => {
+    if (!open || !lockedCompany) return;
+
+    setValue("companyId", lockedCompany.id, {
+      shouldDirty: false,
+      shouldValidate: true,
+    });
+    clearErrors("companyId");
+  }, [clearErrors, lockedCompany, open, setValue]);
 
   const handleClose = () => {
     reset();
+    setCompanySearch("");
+    setCompanyDropdownOpen(false);
     setDeptCompanyFilter("");
     setDepartmentPermissionPreset("NONE");
+    setPasswordVisible(false);
     onClose();
   };
-  const filteredCompany = companies.find((c) => c.id === deptCompanyFilter);
+  const filteredCompany = companyOptions.find((c) => c.id === deptCompanyFilter);
+  const departmentCompanyOptions = lockedCompany
+    ? [lockedCompany]
+    : deptCompanyFilter
+      ? [filteredCompany].filter((company): company is Company => Boolean(company))
+      : companyOptions;
+
+  const handleCompanySelect = (company: Company) => {
+    setValue("companyId", company.id, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    clearErrors("companyId");
+    setCompanySearch(companyLabel(company));
+    setDeptCompanyFilter(company.id);
+    setCompanyDropdownOpen(false);
+  };
+
+  const handleCompanySearchChange = (value: string) => {
+    setCompanySearch(value);
+    setCompanyDropdownOpen(true);
+    if (selectedCompany && value !== selectedCompanyLabel) {
+      setValue("companyId", "", {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  };
 
   const addDepartmentAccess = (departmentId: string) => {
     if (fields.some((f) => f.departmentId === departmentId)) return;
@@ -243,7 +334,7 @@ export function AddUserModal({ open, onClose, onCreated }: { open: boolean; onCl
   };
 
   const getDepartmentName = (departmentId: string) => {
-    for (const company of companies) {
+    for (const company of companyOptions) {
       const dept = company.departments.find((d) => d.id === departmentId);
       if (dept) return { name: dept.name, company: company.name };
     }
@@ -282,17 +373,102 @@ export function AddUserModal({ open, onClose, onCreated }: { open: boolean; onCl
               <Input type="email" placeholder="e.g. riya@example.com" className="rounded-xl" {...register("email", { required: "Email is required", pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: "Enter a valid email" } })} />
             </Field>
             <Field label="Password" required error={errors.password?.message}>
-              <Input type="password" placeholder="Min. 6 characters" className="rounded-xl" {...register("password", { required: "Password is required", minLength: { value: 6, message: "Must be at least 6 characters" } })} />
+              <div className="relative">
+                <Input
+                  type={passwordVisible ? "text" : "password"}
+                  placeholder="Min. 6 characters"
+                  className="rounded-xl pr-10"
+                  autoComplete="new-password"
+                  {...register("password", {
+                    required: "Password is required",
+                    minLength: { value: 6, message: "Must be at least 6 characters" },
+                  })}
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  onClick={() => setPasswordVisible((visible) => !visible)}
+                  aria-label={passwordVisible ? "Hide password" : "Show password"}
+                  title={passwordVisible ? "Hide password" : "Show password"}
+                >
+                  {passwordVisible ? (
+                    <EyeOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </div>
             </Field>
             <Field label="Primary Company" required error={errors.companyId?.message}>
-              <select className="w-full rounded-xl border bg-background px-3 py-2 text-sm" {...register("companyId", { required: "Company is required" })}>
-                <option value="">Choose a company...</option>
-                {companies.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <input
+                  type="hidden"
+                  {...register("companyId", { required: "Company is required" })}
+                />
+                {lockedCompany ? (
+                  <Input
+                    value={companyLabel(lockedCompany)}
+                    className="rounded-xl bg-muted/40"
+                    readOnly
+                  />
+                ) : (
+                  <>
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={companySearch}
+                      placeholder="Search company..."
+                      className="rounded-xl pl-9 pr-9"
+                      role="combobox"
+                      aria-expanded={companyDropdownOpen}
+                      aria-autocomplete="list"
+                      onFocus={(event) => {
+                        setCompanyDropdownOpen(true);
+                        event.currentTarget.select();
+                      }}
+                      onBlur={() => {
+                        window.setTimeout(() => setCompanyDropdownOpen(false), 120);
+                      }}
+                      onChange={(event) => handleCompanySearchChange(event.target.value)}
+                    />
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+
+                    {companyDropdownOpen && (
+                      <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-xl border bg-background py-1 text-sm shadow-lg">
+                        {filteredPrimaryCompanies.length === 0 ? (
+                          <div className="px-3 py-2 text-muted-foreground">
+                            No companies found
+                          </div>
+                        ) : (
+                          filteredPrimaryCompanies.map((company) => {
+                            const isSelected = company.id === selectedCompanyId;
+
+                            return (
+                              <button
+                                key={company.id}
+                                type="button"
+                                className={`flex w-full items-center justify-between px-3 py-2 text-left transition hover:bg-muted ${
+                                  isSelected ? "bg-muted/70 font-medium" : ""
+                                }`}
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
+                                  handleCompanySelect(company);
+                                }}
+                              >
+                                <span>{companyLabel(company)}</span>
+                                {isSelected && (
+                                  <span className="text-xs text-muted-foreground">
+                                    Selected
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </Field>
           </div>
 
@@ -303,18 +479,20 @@ export function AddUserModal({ open, onClose, onCreated }: { open: boolean; onCl
               <span className="text-xs text-muted-foreground">- choose module access before creating</span>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-[1fr_1fr_180px]">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Filter by Company</Label>
-                <select className="w-full rounded-xl border bg-background px-3 py-2 text-sm" value={deptCompanyFilter} onChange={(e) => setDeptCompanyFilter(e.target.value)}>
-                  <option value="">All companies</option>
-                  {companies.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className={`grid gap-3 ${lockedCompany ? "md:grid-cols-[1fr_180px]" : "md:grid-cols-[1fr_1fr_180px]"}`}>
+              {!lockedCompany && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Filter by Company</Label>
+                  <select className="w-full rounded-xl border bg-background px-3 py-2 text-sm" value={deptCompanyFilter} onChange={(e) => setDeptCompanyFilter(e.target.value)}>
+                    <option value="">All companies</option>
+                    {companyOptions.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {companyLabel(c)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Add Department</Label>
                 <select
@@ -325,7 +503,7 @@ export function AddUserModal({ open, onClose, onCreated }: { open: boolean; onCl
                   }}
                   defaultValue="">
                   <option value="">Choose a department...</option>
-                  {(deptCompanyFilter ? [filteredCompany!].filter(Boolean) : companies).map((company) =>
+                  {departmentCompanyOptions.map((company) =>
                     company.departments.length > 0 ? (
                       <optgroup key={company.id} label={company.name}>
                         {company.departments.map((d) => (

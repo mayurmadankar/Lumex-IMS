@@ -4,7 +4,7 @@ import { getAccountTypes } from "../controller/user/accountType.controller.js";
 import { getCities, getCountries, getStates } from "../controller/common/country.controller.js";
 import { createAccount, getAccount, getAccounts, updateAccount } from "../controller/common/account.controller.js";
 import { createInvoice, createInvoiceFromInventory, getInvoice, getInvoiceReturnItemByLot, getInvoices, returnInvoiceItem } from "../controller/common/invoice.controller.js";
-import { createItem, getItems } from "../controller/common/item.controller.js";
+import { getItems } from "../controller/common/item.controller.js";
 import { createMemo, deleteMemo, getMemo, getMemoInventoryItemByLot, getMemoInventoryItems, getMemos, purchaseMemoInventoryItems, returnMemoInventoryItems } from "../controller/common/memo.controller.js";
 import { createMemoOut, getMemoOut, getMemoOutAccounts, getMemoOutInventoryItemByLot, getMemoOutReturnItemByLot, getMemoOuts, returnMemoOutItem } from "../controller/common/memoOut.controller.js";
 import { changeInventoryLocation, getProductionDocuments, getProductionInventoryItemByLot, getProductionReturnItemByLot, returnProductionParts, sendInventoryToProcess } from "../controller/common/production.controller.js";
@@ -41,16 +41,7 @@ router.patch(
 );
 
 // Item master
-router.post(
-  "/items",
-  authorizeDepartmentModule({ module: "ITEM_LIST", access: "READ_WRITE", departmentIdFrom: "body" }),
-  expressErrorHandler(createItem),
-);
-router.get(
-  "/items",
-  authorizeDepartmentModule({ module: "ITEM_LIST", access: "READ_ONLY", departmentIdFrom: "query" }),
-  expressErrorHandler(getItems),
-);
+router.get("/items", expressErrorHandler(getItems));
 
 // Purchase and inventory
 router.post(

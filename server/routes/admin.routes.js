@@ -4,6 +4,7 @@ import { createAccount, getAccount, getAccounts, updateAccount } from "../contro
 import { createCompany, getCompanies, getCompany, updateCompany } from "../controller/admin/company.controller.js";
 import { createUser, getUsers, getUser, updateUser, getDashboardAnalytics } from "../controller/admin/users.controller.js";
 import { createDepartment, updateDepartmentPermissions, addUserDepartment, removeUserDepartment } from "../controller/admin/department.controller.js";
+import { createItem, deleteItem, getItems, updateItem } from "../controller/common/item.controller.js";
 import { createAccountType, getAccountTypes, getAccountTypeById, updateAccountType } from "../controller/admin/accountType.controller.js";
 import { getCities, getCountries, getStates } from "../controller/common/country.controller.js";
 
@@ -34,6 +35,12 @@ router.post("/createDepartment/:companyId", expressErrorHandler(createDepartment
 router.patch("/department-access/:accessId/permissions", expressErrorHandler(updateDepartmentPermissions));
 router.post("/users/:id/departments", expressErrorHandler(addUserDepartment));
 router.delete("/users/:id/departments/:departmentId", expressErrorHandler(removeUserDepartment));
+
+// Item master
+router.post("/items", expressErrorHandler(createItem));
+router.get("/items", expressErrorHandler(getItems));
+router.patch("/items/:id", expressErrorHandler(updateItem));
+router.delete("/items/:id", expressErrorHandler(deleteItem));
 
 // Users
 router.get("/users", expressErrorHandler(getUsers));

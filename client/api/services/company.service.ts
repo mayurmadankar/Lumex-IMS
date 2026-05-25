@@ -14,7 +14,6 @@ export type UpdateCompanyPayload = Partial<CompanyPayload> & {
 
 export type DepartmentPayload = {
   name: string;
-  country: string;
   description?: string;
 };
 

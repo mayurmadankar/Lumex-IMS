@@ -357,12 +357,11 @@ const resolveVendorAccount = async ({ vendorAccountId, companyId }) => {
   });
 };
 
-const resolveItemMasters = async ({ items, companyId }) => {
+const resolveItemMasters = async ({ items }) => {
   const itemMasterIds = [...new Set(items.map((item) => item.itemMasterId))];
   const itemMasters = await prisma.itemMaster.findMany({
     where: {
       id: { in: itemMasterIds },
-      companyId,
     },
     select: {
       id: true,
@@ -560,12 +559,9 @@ export const createPurchaseNote = async (req, res) => {
     });
   }
 
-  const itemMasters = await resolveItemMasters({
-    items: data.items,
-    companyId: department.companyId,
-  });
+  const itemMasters = await resolveItemMasters({ items: data.items });
   if (!itemMasters) {
-    return sendError(res, "Item not found for selected company", 404, {
+    return sendError(res, "Item not found", 404, {
       itemMasterId: ["Select a valid item"],
     });
   }
@@ -902,36 +898,6 @@ export const getPurchaseNote = async (req, res) => {
 
 export const getInventoryItems = async (req, res) => {
   const { departmentId, companyId, search } = req.query;
-  let departmentIds = [];
-
-  if (departmentId) {
-    const canRead = await userHasDepartmentModuleAccess({
-      userId: req.user.userId,
-      userRole: req.user.role,
-      departmentId: String(departmentId),
-      module: "INVENTORY_LIST",
-      access: "READ_ONLY",
-    });
-
-    if (!canRead) return sendError(res, "Inventory access denied", 403);
-    departmentIds = [String(departmentId)];
-  } else {
-    if (!companyId) {
-      return sendError(res, "companyId or departmentId is required", 400);
-    }
-
-    departmentIds = await getAccessibleDepartmentIds({
-      userId: req.user.userId,
-      userRole: req.user.role,
-      companyId: String(companyId),
-      module: "INVENTORY_LIST",
-      access: "READ_ONLY",
-    });
-
-    if (departmentIds.length === 0) {
-      return sendError(res, "Inventory access denied for this company", 403);
-    }
-  }
 
   const stockOriginClauses = [
     { purchaseNoteId: { not: null } },
@@ -939,14 +905,11 @@ export const getInventoryItems = async (req, res) => {
   ];
 
   const where = {
-    ...(departmentId ? { departmentId: { in: departmentIds } } : {}),
+    ...(departmentId ? { departmentId: String(departmentId) } : {}),
+    ...(companyId ? { companyId: String(companyId) } : {}),
     status: { in: ["STOCK", "IN_PROCESS", "PROCESSED"] },
     OR: stockOriginClauses,
   };
-
-  if (companyId) {
-    where.companyId = String(companyId);
-  }
 
   const searchValue = String(search ?? "").trim();
 

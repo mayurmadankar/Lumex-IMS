@@ -9,7 +9,6 @@ import {
   FileMinus,
   FilePlus,
   FileText,
-  List,
   MapPin,
   Package,
   PlusSquare,
@@ -64,7 +63,6 @@ const modules: Module[] = [
     actions: [
       { key: "INVENTORY_LIST", label: "Inventory List", icon: Package, required: "READ_ONLY" },
       { key: "MEMO_IN_INVENTORY", label: "Memo In Inventory", icon: FileText, required: "READ_ONLY" },
-      { key: "ITEM_LIST", label: "Item List", icon: List, required: "READ_ONLY" },
     ],
   },
   {
@@ -330,11 +328,6 @@ export default function UserPage() {
   const handleActionClick = (action: ModuleAction) => {
     if (action.key === "INVENTORY_LIST") {
       router.push("/user/inventory/inventory-list");
-      return;
-    }
-
-    if (action.key === "ITEM_LIST") {
-      router.push("/user/inventory/item-list");
       return;
     }
 

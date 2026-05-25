@@ -8,6 +8,11 @@ export type TransferDepartment = {
   name: string;
   country: string;
   companyId: string;
+  company?: {
+    id: string;
+    name: string;
+    code?: string | null;
+  };
 };
 
 export type TransferDepartmentUser = {
@@ -17,7 +22,9 @@ export type TransferDepartmentUser = {
 };
 
 export type CreateTransferPayload = {
+  transferMode?: "DEPARTMENT" | "COMPANY";
   companyId: string;
+  destinationCompanyId?: string;
   inventoryItemId: string;
   toDepartmentId: string;
   toUserId: string;
@@ -30,7 +37,7 @@ export type TransferListItem = {
   id: string;
   docId: number;
   transferNo: string;
-  docType: "Transfer" | "Transfer Return";
+  docType: "Transfer" | "Company Transfer" | "Transfer Return";
   docDate: string;
   referenceDocNo?: string | null;
   notes?: string | null;
@@ -43,10 +50,20 @@ export type TransferListItem = {
   fromDepartment: {
     id: string;
     name: string;
+    company?: {
+      id: string;
+      name: string;
+      code?: string | null;
+    };
   };
   toDepartment: {
     id: string;
     name: string;
+    company?: {
+      id: string;
+      name: string;
+      code?: string | null;
+    };
   };
   toUser?: TransferDepartmentUser | null;
   createdBy?: TransferDepartmentUser | null;

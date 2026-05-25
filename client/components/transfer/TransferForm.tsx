@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useFormDraft } from "@/hooks/use-form-draft";
+import { useAppSelector } from "@/store/hooks";
 
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
@@ -59,8 +60,12 @@ type TransferFormProps = {
   submitLabel?: string;
 };
 
+type TransferMode = "DEPARTMENT" | "COMPANY";
+
 type TransferDraft = {
+  transferMode: TransferMode;
   lotId: string;
+  destinationCompanyId: string;
   toDepartmentId: string;
   toUserId: string;
   docDate: string;
@@ -70,7 +75,9 @@ type TransferDraft = {
 
 function defaultTransferDraft(): TransferDraft {
   return {
+    transferMode: "DEPARTMENT",
     lotId: "",
+    destinationCompanyId: "",
     toDepartmentId: "",
     toUserId: "",
     docDate: todayInputValue(),
@@ -86,6 +93,11 @@ export default function TransferForm({
   onTransferred,
   submitLabel = "Save Transfer",
 }: TransferFormProps) {
+  const accessibleCompanies = useAppSelector(
+    (state) => state.company.accessibleCompanies,
+  );
+  const [transferMode, setTransferMode] =
+    useState<TransferMode>("DEPARTMENT");
   const [lotId, setLotId] = useState(initialItem ? String(initialItem.lotId) : "");
   const [inventoryItem, setInventoryItem] =
     useState<InventoryItemListItem | null>(initialItem ?? null);
@@ -93,6 +105,7 @@ export default function TransferForm({
   const [itemError, setItemError] = useState<string | null>(null);
   const [departments, setDepartments] = useState<TransferDepartment[]>([]);
   const [departmentsLoading, setDepartmentsLoading] = useState(false);
+  const [destinationCompanyId, setDestinationCompanyId] = useState("");
   const [toDepartmentId, setToDepartmentId] = useState("");
   const [users, setUsers] = useState<TransferDepartmentUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -102,16 +115,35 @@ export default function TransferForm({
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const draftKey = !initialItem && companyId ? `ims:draft:new-transfer:${companyId}` : null;
+  const sourceCompany = accessibleCompanies.find(
+    (company) => company.id === companyId,
+  );
+  const destinationCompanyOptions = accessibleCompanies.filter(
+    (company) => company.id !== companyId && company.status !== "INACTIVE",
+  );
+  const departmentCompanyId =
+    transferMode === "COMPANY" ? destinationCompanyId : companyId;
   const draftValues = useMemo<TransferDraft>(
     () => ({
+      transferMode,
       lotId,
+      destinationCompanyId,
       toDepartmentId,
       toUserId,
       docDate,
       referenceDocNo,
       notes,
     }),
-    [docDate, lotId, notes, referenceDocNo, toDepartmentId, toUserId],
+    [
+      destinationCompanyId,
+      docDate,
+      lotId,
+      notes,
+      referenceDocNo,
+      toDepartmentId,
+      toUserId,
+      transferMode,
+    ],
   );
   const draftMetadata = useMemo(
     () => ({
@@ -128,7 +160,9 @@ export default function TransferForm({
     metadata: draftMetadata,
     getDefaultValues: defaultTransferDraft,
     restore: (draft) => {
+      setTransferMode(draft.transferMode ?? "DEPARTMENT");
       setLotId(draft.lotId ?? "");
+      setDestinationCompanyId(draft.destinationCompanyId ?? "");
       setToDepartmentId(draft.toDepartmentId ?? "");
       setToUserId(draft.toUserId ?? "");
       setDocDate(draft.docDate ?? todayInputValue());
@@ -146,7 +180,7 @@ export default function TransferForm({
   }, [initialItem]);
 
   useEffect(() => {
-    if (!companyId) {
+    if (!departmentCompanyId) {
       setDepartments([]);
       return;
     }
@@ -154,7 +188,9 @@ export default function TransferForm({
     const loadDepartments = async () => {
       try {
         setDepartmentsLoading(true);
-        const response = await getTransferDepartments("user", { companyId });
+        const response = await getTransferDepartments("user", {
+          companyId: departmentCompanyId,
+        });
         setDepartments(response.data.departments ?? []);
       } catch (error: unknown) {
         const apiError = error as { response?: { data?: { message?: string } } };
@@ -169,6 +205,17 @@ export default function TransferForm({
     };
 
     loadDepartments();
+  }, [departmentCompanyId]);
+
+  useEffect(() => {
+    setToDepartmentId("");
+    setToUserId("");
+  }, [destinationCompanyId, transferMode]);
+
+  useEffect(() => {
+    setDestinationCompanyId("");
+    setToDepartmentId("");
+    setToUserId("");
   }, [companyId]);
 
   useEffect(() => {
@@ -208,9 +255,11 @@ export default function TransferForm({
   const destinationDepartments = useMemo(
     () =>
       departments.filter(
-        (department) => department.id !== inventoryItem?.department?.id,
+        (department) =>
+          transferMode === "COMPANY" ||
+          department.id !== inventoryItem?.department?.id,
       ),
-    [departments, inventoryItem?.department?.id],
+    [departments, inventoryItem?.department?.id, transferMode],
   );
 
   const selectedDepartment = destinationDepartments.find(
@@ -285,6 +334,11 @@ export default function TransferForm({
       return;
     }
 
+    if (transferMode === "COMPANY" && !destinationCompanyId) {
+      toast.error("Select a destination company.");
+      return;
+    }
+
     if (!selectedDepartment) {
       toast.error("Select a destination department.");
       return;
@@ -298,7 +352,10 @@ export default function TransferForm({
     try {
       setIsSubmitting(true);
       const response = await createTransfer("user", {
+        transferMode,
         companyId,
+        destinationCompanyId:
+          transferMode === "COMPANY" ? destinationCompanyId : undefined,
         inventoryItemId: inventoryItem.id,
         toDepartmentId: selectedDepartment.id,
         toUserId: selectedUser.id,
@@ -324,9 +381,46 @@ export default function TransferForm({
     setToUserId("");
   };
 
+  const handleTransferModeChange = (value: string) => {
+    setTransferMode(value as TransferMode);
+    setDestinationCompanyId("");
+    setToDepartmentId("");
+    setToUserId("");
+  };
+
+  const handleDestinationCompanyChange = (value: string) => {
+    setDestinationCompanyId(value);
+    setToDepartmentId("");
+    setToUserId("");
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      <div className="grid gap-4">
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Transfer Type" required>
+          <Select value={transferMode} onValueChange={handleTransferModeChange}>
+            <SelectTrigger className="h-10 w-full rounded-xl">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="DEPARTMENT">Department Transfer</SelectItem>
+              <SelectItem value="COMPANY">Company Transfer</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+
+        <Field label="Source Company">
+          <Input
+            value={
+              sourceCompany
+                ? `${sourceCompany.name}${sourceCompany.code ? ` (${sourceCompany.code})` : ""}`
+                : "Selected company"
+            }
+            readOnly
+            className="h-10 rounded-xl bg-muted"
+          />
+        </Field>
+
         <Field label="Lot ID" required error={itemError ?? undefined}>
           <div className="relative">
             <Input
@@ -451,12 +545,40 @@ export default function TransferForm({
       )}
 
       <div className="grid gap-4 md:grid-cols-2">
+        {transferMode === "COMPANY" && (
+          <Field label="Transfer To Company" required>
+            <Select
+              value={destinationCompanyId || undefined}
+              onValueChange={handleDestinationCompanyChange}
+              disabled={destinationCompanyOptions.length === 0}
+            >
+              <SelectTrigger className="h-10 w-full rounded-xl">
+                <SelectValue placeholder="Select company" />
+              </SelectTrigger>
+              <SelectContent>
+                {destinationCompanyOptions.map((company) => (
+                  <SelectItem key={company.id} value={company.id}>
+                    {company.name}
+                    {company.code ? ` (${company.code})` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {destinationCompanyOptions.length === 0 ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                No other accessible companies available.
+              </p>
+            ) : null}
+          </Field>
+        )}
+
         <Field label="Transfer To Department" required>
           <Select
             value={toDepartmentId || undefined}
             onValueChange={handleDepartmentChange}
             disabled={
               !inventoryItem ||
+              (transferMode === "COMPANY" && !destinationCompanyId) ||
               departmentsLoading ||
               destinationDepartments.length === 0
             }
