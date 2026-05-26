@@ -334,6 +334,14 @@ export const createTransfer = async (req, res) => {
   const isCompanyMode = data.transferMode === "COMPANY";
   const destinationCompanyId = isCompanyMode ? data.destinationCompanyId : data.companyId;
 
+  if (isCompanyMode) {
+    return sendError(
+      res,
+      "Company transfer is handled through the item request workflow.",
+      400,
+    );
+  }
+
   if (
     !(await userCanAccessCompany({
       userId: req.user.userId,

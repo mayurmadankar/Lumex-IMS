@@ -9,7 +9,7 @@ import {
 import { sendError, sendSuccess } from "../../helper/response.js";
 import prisma from "../../prisma/client.js";
 
-const PURCHASE_FROM = ["LOCAL_PURCHASE", "IMPORT_PURCHASE", "INTERNAL_PURCHASE"];
+const PURCHASE_FROM = ["LOCAL_PURCHASE", "IMPORT_PURCHASE"];
 const PARCEL_OR_STONE = ["PARCEL", "STONE"];
 const PURCHASE_STATUS = ["ACTIVE", "CANCELLED"];
 
@@ -377,7 +377,33 @@ const resolveItemMasters = async ({ items }) => {
   return new Map(itemMasters.map((item) => [item.id, item]));
 };
 
+const getInventorySequenceFloors = async ({ tx, companyId }) => {
+  const rows = await tx.$queryRaw`
+    SELECT
+      COALESCE((SELECT MAX("lotId") FROM "InventoryItem" WHERE "companyId" = ${companyId}), 0) + 1 AS "nextLotId",
+      GREATEST(
+        COALESCE((SELECT MAX("docId") FROM "PurchaseNote" WHERE "companyId" = ${companyId}), 0),
+        COALESCE((SELECT MAX("docId") FROM "Memo" WHERE "companyId" = ${companyId}), 0),
+        COALESCE((SELECT MAX("docId") FROM "MemoOut" WHERE "companyId" = ${companyId}), 0),
+        COALESCE((SELECT MAX("docId") FROM "Transfer" WHERE "companyId" = ${companyId}), 0),
+        COALESCE((SELECT MAX("docId") FROM "ProductionDocument" WHERE "companyId" = ${companyId}), 0),
+        COALESCE((SELECT MAX("docId") FROM "Invoice" WHERE "companyId" = ${companyId}), 0)
+      ) + 1 AS "nextDocumentNumber",
+      COALESCE(
+        (SELECT MAX((substring("purchaseNo" FROM '([0-9]+)$'))::int) FROM "PurchaseNote" WHERE "companyId" = ${companyId}),
+        0
+      ) + 1 AS "nextPurchaseNoteNumber"
+  `;
+
+  return {
+    nextLotId: Number(rows[0]?.nextLotId ?? 1),
+    nextDocumentNumber: Number(rows[0]?.nextDocumentNumber ?? 1),
+    nextPurchaseNoteNumber: Number(rows[0]?.nextPurchaseNoteNumber ?? 1),
+  };
+};
+
 const reserveInventorySequence = async ({ tx, companyId, itemCount }) => {
+  const floors = await getInventorySequenceFloors({ tx, companyId });
   const rows = await tx.$queryRaw`
     INSERT INTO "InventorySequence" (
       "companyId",
@@ -386,19 +412,25 @@ const reserveInventorySequence = async ({ tx, companyId, itemCount }) => {
       "nextPurchaseNoteNumber",
       "updatedAt"
     )
-    VALUES (${companyId}, ${itemCount + 1}, 2, 2, NOW())
+    VALUES (
+      ${companyId},
+      ${floors.nextLotId + itemCount},
+      ${floors.nextDocumentNumber + 1},
+      ${floors.nextPurchaseNoteNumber + 1},
+      NOW()
+    )
     ON CONFLICT ("companyId")
     DO UPDATE SET
-      "nextLotId" = "InventorySequence"."nextLotId" + ${itemCount},
-      "nextDocumentNumber" = "InventorySequence"."nextDocumentNumber" + 1,
-      "nextPurchaseNoteNumber" = "InventorySequence"."nextPurchaseNoteNumber" + 1,
+      "nextLotId" = GREATEST("InventorySequence"."nextLotId", ${floors.nextLotId}) + ${itemCount},
+      "nextDocumentNumber" = GREATEST("InventorySequence"."nextDocumentNumber", ${floors.nextDocumentNumber}) + 1,
+      "nextPurchaseNoteNumber" = GREATEST("InventorySequence"."nextPurchaseNoteNumber", ${floors.nextPurchaseNoteNumber}) + 1,
       "updatedAt" = NOW()
     RETURNING "nextLotId", "nextDocumentNumber", "nextPurchaseNoteNumber";
   `;
 
-  const nextLotId = Number(rows[0]?.nextLotId ?? itemCount + 1);
-  const nextDocumentNumber = Number(rows[0]?.nextDocumentNumber ?? 2);
-  const nextPurchaseNoteNumber = Number(rows[0]?.nextPurchaseNoteNumber ?? 2);
+  const nextLotId = Number(rows[0]?.nextLotId ?? floors.nextLotId + itemCount);
+  const nextDocumentNumber = Number(rows[0]?.nextDocumentNumber ?? floors.nextDocumentNumber + 1);
+  const nextPurchaseNoteNumber = Number(rows[0]?.nextPurchaseNoteNumber ?? floors.nextPurchaseNoteNumber + 1);
 
   return {
     firstLotId: nextLotId - itemCount,
@@ -408,6 +440,7 @@ const reserveInventorySequence = async ({ tx, companyId, itemCount }) => {
 };
 
 const reservePurchaseDocumentSequence = async ({ tx, companyId }) => {
+  const floors = await getInventorySequenceFloors({ tx, companyId });
   const rows = await tx.$queryRaw`
     INSERT INTO "InventorySequence" (
       "companyId",
@@ -416,17 +449,24 @@ const reservePurchaseDocumentSequence = async ({ tx, companyId }) => {
       "nextPurchaseNoteNumber",
       "updatedAt"
     )
-    VALUES (${companyId}, 1, 2, 2, NOW())
+    VALUES (
+      ${companyId},
+      ${floors.nextLotId},
+      ${floors.nextDocumentNumber + 1},
+      ${floors.nextPurchaseNoteNumber + 1},
+      NOW()
+    )
     ON CONFLICT ("companyId")
     DO UPDATE SET
-      "nextDocumentNumber" = "InventorySequence"."nextDocumentNumber" + 1,
-      "nextPurchaseNoteNumber" = "InventorySequence"."nextPurchaseNoteNumber" + 1,
+      "nextLotId" = GREATEST("InventorySequence"."nextLotId", ${floors.nextLotId}),
+      "nextDocumentNumber" = GREATEST("InventorySequence"."nextDocumentNumber", ${floors.nextDocumentNumber}) + 1,
+      "nextPurchaseNoteNumber" = GREATEST("InventorySequence"."nextPurchaseNoteNumber", ${floors.nextPurchaseNoteNumber}) + 1,
       "updatedAt" = NOW()
     RETURNING "nextDocumentNumber", "nextPurchaseNoteNumber";
   `;
 
-  const nextDocumentNumber = Number(rows[0]?.nextDocumentNumber ?? 2);
-  const nextPurchaseNoteNumber = Number(rows[0]?.nextPurchaseNoteNumber ?? 2);
+  const nextDocumentNumber = Number(rows[0]?.nextDocumentNumber ?? floors.nextDocumentNumber + 1);
+  const nextPurchaseNoteNumber = Number(rows[0]?.nextPurchaseNoteNumber ?? floors.nextPurchaseNoteNumber + 1);
 
   return {
     documentNumber: nextDocumentNumber - 1,
@@ -613,7 +653,7 @@ export const createPurchaseNote = async (req, res) => {
 
         return {
           itemId: buildItemId(department.company, lotId),
-          docId: lotId,
+          docId: note.docId,
           lotId,
           itemMasterId: itemMaster.id,
           itemType: itemMaster.itemType,

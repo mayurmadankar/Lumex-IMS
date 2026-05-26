@@ -39,9 +39,9 @@ import { permissionAllows, permissionsToMap } from "@/config/modules";
 import { useFormDraft } from "@/hooks/use-form-draft";
 import { DEFAULT_PAGE_SIZE, usePagination } from "@/hooks/use-pagination";
 import { useAppSelector } from "@/store/hooks";
-import type { CompanyOption, DepartmentAccessOption } from "@/store/types/types";
+import type { DepartmentAccessOption } from "@/store/types/types";
 
-type PurchaseFrom = "LOCAL_PURCHASE" | "IMPORT_PURCHASE" | "INTERNAL_PURCHASE";
+type PurchaseFrom = "LOCAL_PURCHASE" | "IMPORT_PURCHASE";
 type ParcelOrStone = "PARCEL" | "STONE";
 type PurchaseStatus = "ACTIVE" | "CANCELLED";
 
@@ -76,7 +76,6 @@ const paymentTermOptions = Array.from({ length: 15 }, (_, index) => {
 const purchaseFromOptions: Array<{ value: PurchaseFrom; label: string }> = [
   { value: "LOCAL_PURCHASE", label: "Local Purchase" },
   { value: "IMPORT_PURCHASE", label: "Import Purchase" },
-  { value: "INTERNAL_PURCHASE", label: "Internal Purchase" },
 ];
 
 const purchaseFromLabels = purchaseFromOptions.reduce<Record<PurchaseFrom, string>>(
@@ -87,7 +86,6 @@ const purchaseFromLabels = purchaseFromOptions.reduce<Record<PurchaseFrom, strin
   {
     LOCAL_PURCHASE: "Local Purchase",
     IMPORT_PURCHASE: "Import Purchase",
-    INTERNAL_PURCHASE: "Internal Purchase",
   },
 );
 
@@ -146,10 +144,6 @@ function normalizePaymentTerm(value: unknown) {
 
 function isVendorAccount(account: AccountListItem) {
   return account.accountType.name.trim().toLowerCase() === "vendor";
-}
-
-function companyLabel(company: CompanyOption) {
-  return company.code ? `${company.name} (${company.code})` : company.name;
 }
 
 function departmentOptionLabel(access: DepartmentAccessOption) {
@@ -277,32 +271,13 @@ export default function NewPurchaseNoteForm() {
     );
   }, [accessibleCompanies, selectedAccess, selectedCompanyId]);
 
-  const internalCompanyOptions = useMemo(
-    () =>
-      accessibleCompanies.filter(
-        (company) =>
-          company.id !== currentCompany?.id && company.status !== "INACTIVE",
-      ),
-    [accessibleCompanies, currentCompany?.id],
-  );
-
   const isLocalPurchase = purchaseFrom === "LOCAL_PURCHASE";
-  const isInternalPurchase = purchaseFrom === "INTERNAL_PURCHASE";
-  const selectedVendor = !isInternalPurchase
-    ? vendorAccounts.find((account) => account.id === selectedAccountId)
-    : undefined;
-  const selectedInternalCompany = internalCompanyOptions.find(
-    (company) => company.id === selectedAccountId,
+  const selectedVendor = vendorAccounts.find(
+    (account) => account.id === selectedAccountId,
   );
-  const sourceSelected = isInternalPurchase
-    ? Boolean(selectedInternalCompany)
-    : Boolean(selectedVendor);
-  const sourceFieldLabel = isInternalPurchase ? "Source Company" : "Vendor";
-  const sourcePlaceholder = isInternalPurchase
-    ? "Select source company"
-    : vendorsLoading
-      ? "Loading vendors..."
-      : "Select vendor";
+  const sourceSelected = Boolean(selectedVendor);
+  const sourceFieldLabel = "Vendor";
+  const sourcePlaceholder = vendorsLoading ? "Loading vendors..." : "Select vendor";
 
   const totals = useMemo(
     () =>
@@ -353,17 +328,10 @@ export default function NewPurchaseNoteForm() {
   const draftMetadata = useMemo(
     () => ({
       title: "New Purchase Note",
-      subtitle:
-        selectedVendor?.accountName ??
-        selectedInternalCompany?.name ??
-        purchaseFromLabels[purchaseFrom],
+      subtitle: selectedVendor?.accountName ?? purchaseFromLabels[purchaseFrom],
       href: "/user/purchase/new-purchase-note",
     }),
-    [
-      purchaseFrom,
-      selectedInternalCompany?.name,
-      selectedVendor?.accountName,
-    ],
+    [purchaseFrom, selectedVendor?.accountName],
   );
   const restorePurchaseDraft = (draft: PurchaseNoteDraft) => {
     const lines = Array.isArray(draft.localPurchaseItems)
@@ -721,70 +689,38 @@ export default function NewPurchaseNoteForm() {
             <Field
               label={sourceFieldLabel}
               required
-              error={!isInternalPurchase ? vendorsError ?? undefined : undefined}
+              error={vendorsError ?? undefined}
             >
-              {isInternalPurchase ? (
-                <Select
-                  value={selectedAccountId || undefined}
-                  onValueChange={handleSourceChange}
-                  disabled={internalCompanyOptions.length === 0}
-                >
-                  <SelectTrigger className="h-10 w-full rounded-xl xl:col-span-2">
-                    <SelectValue placeholder={sourcePlaceholder} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {internalCompanyOptions.map((company) => (
-                      <SelectItem key={company.id} value={company.id}>
-                        {companyLabel(company)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <AccountSearchPicker
-                  value={selectedAccountId}
-                  onChange={handleSourceChange}
-                  options={vendorAccounts}
-                  loading={vendorsLoading}
-                  disabled={vendorsLoading || vendorAccounts.length === 0}
-                  placeholder={sourcePlaceholder}
-                  modalTitle="Search Vendor"
-                  searchPlaceholder="Search vendor by name, doc ID, phone, email, or tax ID"
-                  emptyMessage="No vendor accounts found."
-                />
-              )}
-              {vendorsLoading && !isInternalPurchase ? (
+              <AccountSearchPicker
+                value={selectedAccountId}
+                onChange={handleSourceChange}
+                options={vendorAccounts}
+                loading={vendorsLoading}
+                disabled={vendorsLoading || vendorAccounts.length === 0}
+                placeholder={sourcePlaceholder}
+                modalTitle="Search Vendor"
+                searchPlaceholder="Search vendor by name, doc ID, phone, email, or tax ID"
+                emptyMessage="No vendor accounts found."
+              />
+              {vendorsLoading ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   Loading vendors
                 </div>
               ) : null}
-              {isInternalPurchase && internalCompanyOptions.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  No other active companies available.
-                </p>
-              ) : null}
-              {!isInternalPurchase && !vendorsLoading && vendorAccounts.length === 0 && !vendorsError ? (
+              {!vendorsLoading && vendorAccounts.length === 0 && !vendorsError ? (
                 <p className="text-xs text-muted-foreground">
                   No active vendor accounts available.
                 </p>
               ) : null}
             </Field>
 
-            <Field label={isInternalPurchase ? "Company Code" : "Vendor DocID"}>
+            <Field label="Vendor DocID">
               <Input
-                value={
-                  isInternalPurchase
-                    ? selectedInternalCompany?.code ?? ""
-                    : selectedVendor?.accountIndex ?? ""
-                }
+                value={selectedVendor?.accountIndex ?? ""}
                 readOnly
                 className="h-10 rounded-xl bg-muted"
-                placeholder={
-                  isInternalPurchase
-                    ? "Auto-filled from company"
-                    : "Auto-filled from vendor"
-                }
+                placeholder="Auto-filled from vendor"
               />
             </Field>
 
@@ -1201,9 +1137,7 @@ export default function NewPurchaseNoteForm() {
                 Account
               </p>
               <p className="mt-1 font-semibold">
-                {selectedVendor?.accountName ??
-                  selectedInternalCompany?.name ??
-                  "Not selected"}
+                {selectedVendor?.accountName ?? "Not selected"}
               </p>
             </div>
           </div>

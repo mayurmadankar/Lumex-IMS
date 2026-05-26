@@ -22,9 +22,8 @@ export type TransferDepartmentUser = {
 };
 
 export type CreateTransferPayload = {
-  transferMode?: "DEPARTMENT" | "COMPANY";
+  transferMode?: "DEPARTMENT";
   companyId: string;
-  destinationCompanyId?: string;
   inventoryItemId: string;
   toDepartmentId: string;
   toUserId: string;

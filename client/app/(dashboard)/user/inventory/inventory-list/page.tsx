@@ -188,6 +188,7 @@ export default function InventoryListPage() {
   const [invoiceItem, setInvoiceItem] = useState<InventoryItemListItem | null>(
     null,
   );
+  const [invoiceNo, setInvoiceNo] = useState("");
   const [invoiceReferenceDocNo, setInvoiceReferenceDocNo] = useState("");
   const [invoiceType, setInvoiceType] = useState<InvoiceType>("LOCAL_INVOICE");
   const [invoiceAccountId, setInvoiceAccountId] = useState("");
@@ -570,6 +571,7 @@ export default function InventoryListPage() {
     }
 
     setInvoiceItem(item);
+    setInvoiceNo("");
     setInvoiceReferenceDocNo("");
     setInvoiceType("LOCAL_INVOICE");
     setInvoiceAccountId("");
@@ -683,6 +685,11 @@ export default function InventoryListPage() {
       return;
     }
 
+    if (!invoiceNo.trim()) {
+      toast.error("Invoice No is required.");
+      return;
+    }
+
     if (isInternalInvoice && !selectedInvoiceDestination) {
       toast.error("Select a destination department for the internal invoice.");
       return;
@@ -705,6 +712,7 @@ export default function InventoryListPage() {
         destinationDepartmentId: isInternalInvoice
           ? selectedInvoiceDestination?.departmentId
           : undefined,
+        invoiceNo: invoiceNo.trim(),
         referenceDocNo: invoiceReferenceDocNo.trim(),
         invoiceType,
         docDate: invoiceDocDate,
@@ -1144,6 +1152,14 @@ export default function InventoryListPage() {
                     }
                     readOnly
                     className="h-10 rounded-xl bg-muted"
+                  />
+                </Field>
+                <Field label="Invoice No" required>
+                  <Input
+                    value={invoiceNo}
+                    onChange={(event) => setInvoiceNo(event.target.value)}
+                    className="h-10 rounded-xl"
+                    placeholder="INV-2026-001"
                   />
                 </Field>
                 <Field label="Reference Doc No">

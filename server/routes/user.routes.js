@@ -10,6 +10,7 @@ import { createMemoOut, getMemoOut, getMemoOutAccounts, getMemoOutInventoryItemB
 import { changeInventoryLocation, getProductionDocuments, getProductionInventoryItemByLot, getProductionReturnItemByLot, returnProductionParts, sendInventoryToProcess } from "../controller/common/production.controller.js";
 import { createPurchaseNote, getInventoryItemByLot, getInventoryItems, getPurchaseNote, getPurchaseNotes, returnInventoryItems } from "../controller/common/purchase.controller.js";
 import { createTransfer, createTransferReturn, getCompanyDepartments, getDepartmentUsers, getTransferReturnItemByLot, getTransfers } from "../controller/common/transfer.controller.js";
+import { approveTransferRequest, createTransferRequest, getCrossCompanyInventory, getIncomingTransferRequests, getNotifications, getOutgoingTransferRequests, getTransferRequests, markNotificationRead, markNotificationsRead, rejectTransferRequest } from "../controller/common/transferRequest.controller.js";
 import { authorizeDepartmentModule } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
@@ -150,6 +151,16 @@ router.get("/memo-outs", expressErrorHandler(getMemoOuts));
 router.get("/memo-outs/:id", expressErrorHandler(getMemoOut));
 
 // Transfer
+router.get("/cross-company-inventory", expressErrorHandler(getCrossCompanyInventory));
+router.post("/transfer-requests", expressErrorHandler(createTransferRequest));
+router.get("/transfer-requests", expressErrorHandler(getTransferRequests));
+router.get("/transfer-requests/incoming", expressErrorHandler(getIncomingTransferRequests));
+router.get("/transfer-requests/outgoing", expressErrorHandler(getOutgoingTransferRequests));
+router.post("/transfer-requests/:id/approve", expressErrorHandler(approveTransferRequest));
+router.post("/transfer-requests/:id/reject", expressErrorHandler(rejectTransferRequest));
+router.get("/notifications", expressErrorHandler(getNotifications));
+router.patch("/notifications/read", expressErrorHandler(markNotificationsRead));
+router.patch("/notifications/:id/read", expressErrorHandler(markNotificationRead));
 router.get("/transfer-departments", expressErrorHandler(getCompanyDepartments));
 router.get("/transfer-departments/:departmentId/users", expressErrorHandler(getDepartmentUsers));
 router.post("/transfers", expressErrorHandler(createTransfer));

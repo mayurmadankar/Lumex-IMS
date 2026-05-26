@@ -20,20 +20,24 @@ model User {
   companyId String?
   company   Company? @relation("UserCompany", fields: [companyId], references: [id])
 
-  orgAdminProfile       OrgAdminProfile?
-  departmentAccesses    UserDepartmentAccess[]
-  accountsCreated       Account[]              @relation("AccountCreatedBy")
-  accountsUpdated       Account[]              @relation("AccountUpdatedBy")
-  purchaseNotesCreated  PurchaseNote[]         @relation("PurchaseNoteCreatedBy")
-  memosCreated          Memo[]                 @relation("MemoCreatedBy")
-  memoOutsCreated       MemoOut[]              @relation("MemoOutCreatedBy")
-  invoicesCreated       Invoice[]              @relation("InvoiceCreatedBy")
-  transfersCreated      Transfer[]             @relation("TransferCreatedBy")
-  transfersReceived     Transfer[]             @relation("TransferToUser")
-  productionDocsCreated ProductionDocument[]   @relation("ProductionDocumentCreatedBy")
-  inventoryItemsCreated InventoryItem[]        @relation("InventoryItemCreatedBy")
-  itemMastersCreated    ItemMaster[]           @relation("ItemMasterCreatedBy")
-  passwordResetOtps     PasswordResetOtp[]
+  orgAdminProfile          OrgAdminProfile?
+  departmentAccesses       UserDepartmentAccess[]
+  accountsCreated          Account[]              @relation("AccountCreatedBy")
+  accountsUpdated          Account[]              @relation("AccountUpdatedBy")
+  purchaseNotesCreated     PurchaseNote[]         @relation("PurchaseNoteCreatedBy")
+  memosCreated             Memo[]                 @relation("MemoCreatedBy")
+  memoOutsCreated          MemoOut[]              @relation("MemoOutCreatedBy")
+  invoicesCreated          Invoice[]              @relation("InvoiceCreatedBy")
+  transfersCreated         Transfer[]             @relation("TransferCreatedBy")
+  transfersReceived        Transfer[]             @relation("TransferToUser")
+  transferRequestsCreated  TransferRequest[]      @relation("TransferRequestRequester")
+  transferRequestsApproved TransferRequest[]      @relation("TransferRequestApprover")
+  notificationsReceived    Notification[]         @relation("NotificationRecipient")
+  notificationsCreated     Notification[]         @relation("NotificationActor")
+  productionDocsCreated    ProductionDocument[]   @relation("ProductionDocumentCreatedBy")
+  inventoryItemsCreated    InventoryItem[]        @relation("InventoryItemCreatedBy")
+  itemMastersCreated       ItemMaster[]           @relation("ItemMasterCreatedBy")
+  passwordResetOtps        PasswordResetOtp[]
 }
 
 model OrgAdminProfile {
@@ -76,22 +80,25 @@ model Company {
   updatedAt           DateTime      @updatedAt
   users               User[]        @relation("UserCompany")
 
-  primaryDepartment   Department?          @relation("CompanyPrimaryDepartment", fields: [primaryDepartmentId], references: [id], onDelete: SetNull)
-  departments         Department[]         @relation("CompanyDepartments")
-  accounts            Account[]
-  accountSequence     AccountSequence?
-  inventorySequence   InventorySequence?
-  purchaseNotes       PurchaseNote[]       @relation("PurchaseNoteCompany")
-  sourcePurchaseNotes PurchaseNote[]       @relation("PurchaseNoteSourceCompany")
-  memos               Memo[]
-  memoOuts            MemoOut[]
-  invoices            Invoice[]
-  sourceInvoices      Invoice[]            @relation("InvoiceSourceCompany")
-  transfers           Transfer[]           @relation("TransferCompany")
-  productionDocuments ProductionDocument[]
-  inventoryItems      InventoryItem[]
-  itemMasters         ItemMaster[]
-  itemSequence        ItemSequence?
+  primaryDepartment         Department?          @relation("CompanyPrimaryDepartment", fields: [primaryDepartmentId], references: [id], onDelete: SetNull)
+  departments               Department[]         @relation("CompanyDepartments")
+  accounts                  Account[]
+  accountSequence           AccountSequence?
+  inventorySequence         InventorySequence?
+  purchaseNotes             PurchaseNote[]       @relation("PurchaseNoteCompany")
+  sourcePurchaseNotes       PurchaseNote[]       @relation("PurchaseNoteSourceCompany")
+  memos                     Memo[]
+  memoOuts                  MemoOut[]
+  invoices                  Invoice[]
+  sourceInvoices            Invoice[]            @relation("InvoiceSourceCompany")
+  transfers                 Transfer[]           @relation("TransferCompany")
+  sourceTransferRequests    TransferRequest[]    @relation("TransferRequestSourceCompany")
+  requesterTransferRequests TransferRequest[]    @relation("TransferRequestRequesterCompany")
+  notifications             Notification[]       @relation("NotificationCompany")
+  productionDocuments       ProductionDocument[]
+  inventoryItems            InventoryItem[]
+  itemMasters               ItemMaster[]
+  itemSequence              ItemSequence?
 }
 
 model AccountType {
@@ -154,19 +161,21 @@ model Department {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  companyId         String
-  company           Company                @relation("CompanyDepartments", fields: [companyId], references: [id], onDelete: Cascade)
-  primaryForCompany Company?               @relation("CompanyPrimaryDepartment")
-  userAccesses      UserDepartmentAccess[]
-  originAccounts    Account[]
-  purchaseNotes     PurchaseNote[]
-  memos             Memo[]
-  memoOuts          MemoOut[]
-  invoices          Invoice[]
-  outgoingTransfers Transfer[]             @relation("TransferFromDepartment")
-  incomingTransfers Transfer[]             @relation("TransferToDepartment")
-  productionDocs    ProductionDocument[]
-  inventoryItems    InventoryItem[]
+  companyId                 String
+  company                   Company                @relation("CompanyDepartments", fields: [companyId], references: [id], onDelete: Cascade)
+  primaryForCompany         Company?               @relation("CompanyPrimaryDepartment")
+  userAccesses              UserDepartmentAccess[]
+  originAccounts            Account[]
+  purchaseNotes             PurchaseNote[]
+  memos                     Memo[]
+  memoOuts                  MemoOut[]
+  invoices                  Invoice[]
+  outgoingTransfers         Transfer[]             @relation("TransferFromDepartment")
+  incomingTransfers         Transfer[]             @relation("TransferToDepartment")
+  sourceTransferRequests    TransferRequest[]      @relation("TransferRequestSourceDepartment")
+  requesterTransferRequests TransferRequest[]      @relation("TransferRequestRequesterDepartment")
+  productionDocs            ProductionDocument[]
+  inventoryItems            InventoryItem[]
 
   @@unique([companyId, name])
 }
@@ -390,6 +399,7 @@ model InventoryItem {
   invoiceItems              InvoiceItem[]
   inventoryMovements        InventoryMovement[]
   transfers                 Transfer[]           @relation("TransferInventoryItem")
+  transferRequests          TransferRequest[]    @relation("TransferRequestInventoryItem")
   memoOutDocuments          MemoOut[]            @relation("MemoOutInventoryItem")
   productionSourceDocuments ProductionDocument[] @relation("ProductionSourceItem")
 
@@ -400,8 +410,8 @@ model InventoryItem {
   updatedAt DateTime @updatedAt
 
   @@unique([companyId, itemId])
-  @@unique([companyId, docId])
   @@unique([companyId, lotId])
+  @@index([companyId, docId])
   @@index([itemMasterId])
   @@index([purchaseNoteId])
   @@index([memoId])
@@ -462,6 +472,8 @@ model Transfer {
   createdById String
   createdBy   User   @relation("TransferCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
+  transferRequest TransferRequest?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -473,6 +485,80 @@ model Transfer {
   @@index([inventoryItemId])
   @@index([toUserId])
   @@index([createdById])
+}
+
+model TransferRequest {
+  id        String @id @default(uuid())
+  requestNo String @unique
+
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation("TransferRequestInventoryItem", fields: [inventoryItemId], references: [id], onDelete: Restrict)
+
+  sourceCompanyId String
+  sourceCompany   Company @relation("TransferRequestSourceCompany", fields: [sourceCompanyId], references: [id], onDelete: Restrict)
+
+  sourceDepartmentId String
+  sourceDepartment   Department @relation("TransferRequestSourceDepartment", fields: [sourceDepartmentId], references: [id], onDelete: Restrict)
+
+  requesterCompanyId String
+  requesterCompany   Company @relation("TransferRequestRequesterCompany", fields: [requesterCompanyId], references: [id], onDelete: Restrict)
+
+  requesterDepartmentId String
+  requesterDepartment   Department @relation("TransferRequestRequesterDepartment", fields: [requesterDepartmentId], references: [id], onDelete: Restrict)
+
+  requesterUserId String
+  requesterUser   User   @relation("TransferRequestRequester", fields: [requesterUserId], references: [id], onDelete: Restrict)
+
+  approvedById String?
+  approvedBy   User?   @relation("TransferRequestApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  transferId String?   @unique
+  transfer   Transfer? @relation(fields: [transferId], references: [id], onDelete: SetNull)
+
+  status       TransferRequestStatus @default(PENDING)
+  requestNote  String?
+  responseNote String?
+
+  notifications Notification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([inventoryItemId])
+  @@index([sourceCompanyId, status, createdAt(sort: Desc)])
+  @@index([sourceDepartmentId, status, createdAt(sort: Desc)])
+  @@index([requesterCompanyId, status, createdAt(sort: Desc)])
+  @@index([requesterDepartmentId, status, createdAt(sort: Desc)])
+  @@index([requesterUserId, createdAt(sort: Desc)])
+  @@index([approvedById])
+}
+
+model Notification {
+  id String @id @default(uuid())
+
+  recipientUserId String
+  recipientUser   User   @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  actorUserId String?
+  actorUser   User?   @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  companyId String?
+  company   Company? @relation("NotificationCompany", fields: [companyId], references: [id], onDelete: SetNull)
+
+  transferRequestId String?
+  transferRequest   TransferRequest? @relation(fields: [transferRequestId], references: [id], onDelete: Cascade)
+
+  type    NotificationType
+  title   String
+  message String
+  readAt  DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([recipientUserId, readAt, createdAt(sort: Desc)])
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([transferRequestId])
+  @@index([actorUserId])
 }
 
 model ProductionDocument {
@@ -765,6 +851,21 @@ model UserDepartmentAccess {
 enum UserRole {
   ORG_ADMIN
   USER
+}
+
+enum TransferRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  TRANSFERRED
+  CANCELLED
+}
+
+enum NotificationType {
+  TRANSFER_REQUEST_CREATED
+  TRANSFER_REQUEST_APPROVED
+  TRANSFER_REQUEST_REJECTED
+  TRANSFER_REQUEST_TRANSFERRED
 }
 
 enum CompanyStatus {

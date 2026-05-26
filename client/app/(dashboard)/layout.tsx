@@ -1,9 +1,14 @@
 "use client";
 
 import { Bell, Building, Check, ChevronDown, RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getCurrentSessionService } from "@/api/services/auth.service";
+import {
+  getNotifications,
+  markNotificationsRead,
+} from "@/api/services/transfer-request.service";
 import AuthGuard from "@/components/guards/auth-guard";
 import LogoutButton from "@/components/guards/logout";
 import AppSidebar from "@/components/layout/sidebar";
@@ -124,8 +129,11 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const dispatch = useAppDispatch();
+  const router = useRouter();
+  const pathname = usePathname();
   const user = useAppSelector((state) => state.auth.user);
   const refreshedSessionRef = useRef(false);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
 
   const isOrgAdmin = user?.role === "ORG_ADMIN";
   const departmentAccesses = useMemo(
@@ -211,6 +219,41 @@ export default function DashboardLayout({
     dispatch(setPermissions(permissionsToMap(firstAccess.permissions)));
   }, [departmentAccesses, dispatch, isOrgAdmin, user]);
 
+  useEffect(() => {
+    if (!user || isOrgAdmin) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadUnreadNotifications = async () => {
+      try {
+        const response = await getNotifications("user", { unreadOnly: true });
+        if (!cancelled) {
+          setUnreadNotificationCount(response.data.unreadCount ?? 0);
+        }
+      } catch {
+        if (!cancelled) setUnreadNotificationCount(0);
+      }
+    };
+
+    loadUnreadNotifications();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOrgAdmin, user]);
+
+  useEffect(() => {
+    if (!user || isOrgAdmin || pathname !== "/user/transfer/notifications") {
+      return;
+    }
+
+    markNotificationsRead("user")
+      .then(() => setUnreadNotificationCount(0))
+      .catch(() => undefined);
+  }, [isOrgAdmin, pathname, user]);
+
   const handleDepartmentSelect = (departmentId: string) => {
     const access = departmentAccesses.find(
       (item) => item.departmentId === departmentId,
@@ -221,6 +264,17 @@ export default function DashboardLayout({
     dispatch(setSelectedCompanyInAuth(access.companyId));
     dispatch(setSelectedCompanyId(access.companyId));
     dispatch(setPermissions(permissionsToMap(access.permissions)));
+  };
+
+  const handleNotificationClick = () => {
+    if (isOrgAdmin) {
+      router.push("/admin");
+      return;
+    }
+
+    setUnreadNotificationCount(0);
+    markNotificationsRead("user").catch(() => undefined);
+    router.push("/user/transfer/notifications");
   };
 
   const userInitials =
@@ -326,10 +380,13 @@ export default function DashboardLayout({
                   variant="ghost"
                   size="icon"
                   className="h-9 w-9 rounded-xl"
+                  onClick={handleNotificationClick}
                 >
                   <Bell className="h-4 w-4" />
                 </Button>
-                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-background" />
+                {!isOrgAdmin && unreadNotificationCount > 0 && (
+                  <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-background" />
+                )}
               </div>
 
               <div className="flex items-center gap-3 rounded-xl border px-3 py-2">

@@ -77,14 +77,6 @@ function accountName(invoice: InvoiceListItem) {
   return invoice.account?.accountName ?? invoice.sourceCompany?.name ?? "-";
 }
 
-function accountDocId(invoice: InvoiceListItem) {
-  return invoice.account?.accountIndex ?? invoice.sourceCompany?.code ?? "-";
-}
-
-function sourceDocId(invoice: InvoiceListItem) {
-  return invoice.sourceDocNo ?? invoice.items?.[0]?.sourceDocNo ?? "-";
-}
-
 function lotId(invoice: InvoiceListItem) {
   return invoice.lotId ?? invoice.items?.[0]?.lotId ?? "-";
 }
@@ -143,17 +135,13 @@ export default function InvoiceListPage() {
           invoice.invoiceNo,
           invoice.docType,
           invoice.docId,
-          invoice.sourceDocId,
-          invoice.sourceDocNo,
           invoice.lotId,
           invoice.referenceDocNo,
           invoice.notes,
           invoice.invoiceType,
           invoice.invoiceTypeLabel,
           invoice.account?.accountName,
-          invoice.account?.accountIndex,
           invoice.sourceCompany?.name,
-          invoice.sourceCompany?.code,
           invoice.itemName,
           invoice.itemDescription,
           invoice.status,
@@ -238,7 +226,7 @@ export default function InvoiceListPage() {
         ) : (
           <div className="overflow-hidden rounded-2xl border bg-background">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[2280px] text-sm">
+              <table className="w-full min-w-[2020px] text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
                     <th className="px-3 py-3 font-medium">Company</th>
@@ -248,9 +236,7 @@ export default function InvoiceListPage() {
                     <th className="px-3 py-3 font-medium">Invoice ID</th>
                     <th className="px-3 py-3 font-medium">Doc ID</th>
                     <th className="px-3 py-3 font-medium">Account</th>
-                    <th className="px-3 py-3 font-medium">Account Doc ID</th>
                     <th className="px-3 py-3 font-medium">Lot ID</th>
-                    <th className="px-3 py-3 font-medium">Source Document</th>
                     <th className="px-3 py-3 font-medium">Item Name</th>
                     <th className="px-3 py-3 font-medium">Description</th>
                     <th className="px-3 py-3 text-right font-medium">Qty</th>
@@ -295,13 +281,7 @@ export default function InvoiceListPage() {
                       </td>
                       <td className="px-3 py-3">{accountName(invoice)}</td>
                       <td className="px-3 py-3 font-medium text-blue-600">
-                        {accountDocId(invoice)}
-                      </td>
-                      <td className="px-3 py-3 font-medium text-blue-600">
                         {lotId(invoice)}
-                      </td>
-                      <td className="px-3 py-3 font-medium text-blue-600">
-                        {sourceDocId(invoice)}
                       </td>
                       <td className="px-3 py-3">{invoice.itemName ?? "-"}</td>
                       <td className="px-3 py-3">

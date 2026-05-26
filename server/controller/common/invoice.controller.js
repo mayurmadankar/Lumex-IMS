@@ -17,6 +17,11 @@ const emptyToUndefined = (value) =>
 const optionalString = () =>
   z.preprocess(emptyToUndefined, z.string().trim().optional());
 
+const invoiceNoSchema = z.preprocess(
+  emptyToUndefined,
+  z.string().trim().min(1, "Invoice No is required").max(80, "Invoice No is too long").optional(),
+);
+
 const optionalUuid = () =>
   z.preprocess(emptyToUndefined, z.string().uuid("Invalid ID").optional());
 
@@ -67,6 +72,7 @@ const manualInvoiceSchema = addDestinationRule(
   z.object({
     departmentId: z.string({ required_error: "departmentId is required" }).uuid("Invalid department"),
     ...invoiceDestinationSchema,
+    invoiceNo: invoiceNoSchema,
     referenceDocNo: z.string({ required_error: "Reference Doc No is required" }).trim().min(1, "Reference Doc No is required"),
     invoiceType: invoiceTypeSchema,
     docDate: docDateSchema,
@@ -89,6 +95,7 @@ const inventoryInvoiceSchema = addDestinationRule(
     departmentId: z.string({ required_error: "departmentId is required" }).uuid("Invalid department"),
     inventoryItemId: z.string({ required_error: "Select an inventory item" }).uuid("Invalid inventory item"),
     ...invoiceDestinationSchema,
+    invoiceNo: invoiceNoSchema,
     referenceDocNo: z.string({ required_error: "Reference Doc No is required" }).trim().min(1, "Reference Doc No is required"),
     invoiceType: invoiceTypeSchema,
     docDate: docDateSchema,
@@ -370,6 +377,21 @@ const ensureUniqueReference = async ({ companyId, referenceDocNo }) => {
   return !existing;
 };
 
+const ensureUniqueInvoiceNo = async ({ companyId, invoiceNo }) => {
+  const existing = await prisma.invoice.findFirst({
+    where: { companyId, invoiceNo },
+    select: { id: true },
+  });
+  return !existing;
+};
+
+const isInvoiceNoUniqueError = (error) => {
+  const target = error?.meta?.target;
+  return Array.isArray(target)
+    ? target.includes("invoiceNo")
+    : typeof target === "string" && target.includes("invoiceNo");
+};
+
 const reserveInvoiceSequence = async ({ tx, companyId }) => {
   const rows = await tx.$queryRaw`
     INSERT INTO "InventorySequence" (
@@ -553,7 +575,7 @@ const mapInvoiceItem = (item) => ({
 
 const mapInvoice = (invoice) => ({
   id: invoice.id,
-  docId: invoice.items?.[0]?.inventoryItem?.docId ?? invoice.docId,
+  docId: invoice.items?.[0]?.inventoryItem?.docId ?? invoice.items?.[0]?.lotId ?? invoice.docId,
   invoiceNo: invoice.invoiceNo,
   docType: invoice.docType,
   invoiceType: invoice.invoiceType,
@@ -621,9 +643,9 @@ const sourceDocumentSummary = (item) => {
   const source = item.inventoryItem?.purchaseNote ?? item.inventoryItem?.memo ?? null;
   if (!source) {
     return {
-      sourceDocId: null,
-      sourceDocNo: null,
-      sourceDocType: null,
+      sourceDocId: item.lotId ?? null,
+      sourceDocNo: item.lotId ? `Lot ${item.lotId}` : null,
+      sourceDocType: item.lotId ? "Inventory Lot" : null,
     };
   }
 
@@ -744,57 +766,77 @@ export const createInvoice = async (req, res) => {
     });
   }
 
+  if (
+    data.invoiceNo &&
+    !(await ensureUniqueInvoiceNo({ companyId: department.companyId, invoiceNo: data.invoiceNo }))
+  ) {
+    return sendError(res, "Invoice No already exists for this company", 409, {
+      invoiceNo: ["Invoice No already exists for this company"],
+    });
+  }
+
   const lineSubtotal = data.item.quantity * data.item.unitPrice;
   const remark = data.remark ?? data.notes ?? null;
   const totalAmount = lineSubtotal;
 
-  const invoice = await prisma.$transaction(async (tx) => {
-    const sequence = await reserveInvoiceSequence({ tx, companyId: department.companyId });
-    const invoiceNo = buildInvoiceNo(department.company, sequence.invoiceNumber);
+  try {
+    const invoice = await prisma.$transaction(async (tx) => {
+      const sequence = await reserveInvoiceSequence({ tx, companyId: department.companyId });
+      const invoiceNo =
+        data.invoiceNo ?? buildInvoiceNo(department.company, sequence.invoiceNumber);
 
-    const created = await tx.invoice.create({
-      data: {
-        docId: sequence.documentNumber,
-        invoiceNo,
-        docType: "Invoice",
-        invoiceType: data.invoiceType,
-        docDate: parseDate(data.docDate),
-        referenceDocNo: data.referenceDocNo,
-        docQty: data.item.quantity,
-        docWeight: 0,
-        subtotalAmount: lineSubtotal,
-        discountAmount: 0,
-        taxAmount: 0,
-        totalAmount,
-        balanceAmount: totalAmount,
-        currency: data.currency ?? "USD",
-        notes: remark,
-        specialInstructions: null,
-        status: data.status,
-        companyId: department.companyId,
-        departmentId: department.id,
-        accountId: account?.id ?? null,
-        sourceCompanyId: sourceCompany?.id ?? null,
-        createdById: req.user.userId,
-        items: {
-          create: {
-            lotId: data.item.lotId ?? null,
-            itemName: data.item.itemName,
-            itemDescription: data.item.itemDescription ?? null,
-            quantity: data.item.quantity,
-            unitPrice: data.item.unitPrice,
-            totalAmount: lineSubtotal,
-            weight: 0,
+      const created = await tx.invoice.create({
+        data: {
+          docId: sequence.documentNumber,
+          invoiceNo,
+          docType: "Invoice",
+          invoiceType: data.invoiceType,
+          docDate: parseDate(data.docDate),
+          referenceDocNo: data.referenceDocNo,
+          docQty: data.item.quantity,
+          docWeight: 0,
+          subtotalAmount: lineSubtotal,
+          discountAmount: 0,
+          taxAmount: 0,
+          totalAmount,
+          balanceAmount: totalAmount,
+          currency: data.currency ?? "USD",
+          notes: remark,
+          specialInstructions: null,
+          status: data.status,
+          companyId: department.companyId,
+          departmentId: department.id,
+          accountId: account?.id ?? null,
+          sourceCompanyId: sourceCompany?.id ?? null,
+          createdById: req.user.userId,
+          items: {
+            create: {
+              lotId: data.item.lotId ?? null,
+              itemName: data.item.itemName,
+              itemDescription: data.item.itemDescription ?? null,
+              quantity: data.item.quantity,
+              unitPrice: data.item.unitPrice,
+              totalAmount: lineSubtotal,
+              weight: 0,
+            },
           },
         },
-      },
-      include: invoiceInclude,
+        include: invoiceInclude,
+      });
+
+      return created;
     });
 
-    return created;
-  });
+    return sendSuccess(res, "Invoice created successfully", { invoice: mapInvoice(invoice) }, 201);
+  } catch (error) {
+    if (error?.code === "P2002" && isInvoiceNoUniqueError(error)) {
+      return sendError(res, "Invoice No already exists for this company", 409, {
+        invoiceNo: ["Invoice No already exists for this company"],
+      });
+    }
 
-  return sendSuccess(res, "Invoice created successfully", { invoice: mapInvoice(invoice) }, 201);
+    throw error;
+  }
 };
 
 export const createInvoiceFromInventory = async (req, res) => {
@@ -849,6 +891,15 @@ export const createInvoiceFromInventory = async (req, res) => {
     });
   }
 
+  if (
+    data.invoiceNo &&
+    !(await ensureUniqueInvoiceNo({ companyId: department.companyId, invoiceNo: data.invoiceNo }))
+  ) {
+    return sendError(res, "Invoice No already exists for this company", 409, {
+      invoiceNo: ["Invoice No already exists for this company"],
+    });
+  }
+
   const inventoryItem = await prisma.inventoryItem.findFirst({
     where: {
       id: data.inventoryItemId,
@@ -890,7 +941,8 @@ export const createInvoiceFromInventory = async (req, res) => {
         tx,
         companyId: department.companyId,
       });
-      const invoiceNo = buildInvoiceNo(department.company, sequence.invoiceNumber);
+      const invoiceNo =
+        data.invoiceNo ?? buildInvoiceNo(department.company, sequence.invoiceNumber);
 
       const created = await tx.invoice.create({
         data: {
@@ -1099,6 +1151,12 @@ export const createInvoiceFromInventory = async (req, res) => {
         "Selected inventory item changed before invoice was completed. Refresh and try again.",
         409,
       );
+    }
+
+    if (error?.code === "P2002" && isInvoiceNoUniqueError(error)) {
+      return sendError(res, "Invoice No already exists for this company", 409, {
+        invoiceNo: ["Invoice No already exists for this company"],
+      });
     }
 
     if (error?.code === "P2002") {

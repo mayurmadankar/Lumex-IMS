@@ -9,6 +9,7 @@ import {
   FileMinus,
   FilePlus,
   FileText,
+  Inbox,
   MapPin,
   Package,
   PlusSquare,
@@ -27,13 +28,19 @@ import type { ModuleKey, PermissionLevel } from "@/config/modules";
 import { useAppSelector } from "@/store/hooks";
 
 type ActionPermission = Exclude<PermissionLevel, "NONE">;
+type WorkflowActionKey =
+  | "AVAILABLE_COMPANY_STOCK"
+  | "TRANSFER_REQUESTS"
+  | "INCOMING_TRANSFER_REQUESTS"
+  | "MY_TRANSFER_REQUESTS";
 
 type ModuleAction = {
-  key: ModuleKey;
+  key: ModuleKey | WorkflowActionKey;
   label: string;
   icon: ElementType;
-  required: ActionPermission;
+  required?: ActionPermission;
   isNew?: boolean;
+  visibleAlways?: boolean;
 };
 
 type Module = {
@@ -144,6 +151,10 @@ const modules: Module[] = [
     borderColor: "border-purple-200",
     textAccent: "text-purple-700",
     actions: [
+      { key: "AVAILABLE_COMPANY_STOCK", label: "Available Company Stock", icon: Package, visibleAlways: true },
+      { key: "TRANSFER_REQUESTS", label: "Transfer Requests", icon: ArrowRightLeft, visibleAlways: true },
+      { key: "INCOMING_TRANSFER_REQUESTS", label: "Incoming Requests", icon: Inbox, visibleAlways: true },
+      { key: "MY_TRANSFER_REQUESTS", label: "My Requests", icon: Send, visibleAlways: true },
       { key: "TRANSFER_LIST", label: "Transfer List", icon: ArrowRightLeft, required: "READ_ONLY" },
       { key: "NEW_TRANSFER", label: "New Transfer", icon: FilePlus, required: "READ_WRITE", isNew: true },
       { key: "NEW_TRANSFER_RETURN", label: "New Transfer Return", icon: FileMinus, required: "READ_WRITE" },
@@ -170,7 +181,7 @@ function ModuleCard({
   onActionClick,
 }: {
   mod: VisibleModule;
-  activeActionKey: ModuleKey | null;
+  activeActionKey: ModuleAction["key"] | null;
   onActionClick: (action: ModuleAction) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -274,9 +285,13 @@ export default function UserPage() {
       modules
         .map((mod) => ({
           ...mod,
-          actions: mod.actions.filter((action) =>
-            permissionAllows(permissionMap[action.key], action.required),
-          ),
+          actions: mod.actions.filter((action) => {
+            if (action.visibleAlways) return true;
+            return permissionAllows(
+              permissionMap[action.key as ModuleKey],
+              action.required ?? "READ_ONLY",
+            );
+          }),
         }))
         .filter((mod) => mod.actions.length > 0),
     [permissionMap],
@@ -423,6 +438,26 @@ export default function UserPage() {
 
     if (action.key === "TRANSFER_LIST") {
       router.push("/user/transfer/transfers");
+      return;
+    }
+
+    if (action.key === "AVAILABLE_COMPANY_STOCK") {
+      router.push("/user/transfer/available-stock");
+      return;
+    }
+
+    if (action.key === "TRANSFER_REQUESTS") {
+      router.push("/user/transfer/transfer-requests");
+      return;
+    }
+
+    if (action.key === "INCOMING_TRANSFER_REQUESTS") {
+      router.push("/user/transfer/incoming-requests");
+      return;
+    }
+
+    if (action.key === "MY_TRANSFER_REQUESTS") {
+      router.push("/user/transfer/my-requests");
       return;
     }
 

@@ -82,6 +82,7 @@ function stockCurrency(item?: InventoryItemListItem | null) {
 type NewInvoiceDraft = {
   accountId: string;
   destinationDepartmentId: string;
+  invoiceNo: string;
   referenceDocNo: string;
   invoiceType: InvoiceType;
   docDate: string;
@@ -94,6 +95,7 @@ function defaultNewInvoiceDraft(): NewInvoiceDraft {
   return {
     accountId: "",
     destinationDepartmentId: "",
+    invoiceNo: "",
     referenceDocNo: "",
     invoiceType: "LOCAL_INVOICE",
     docDate: todayInputValue(),
@@ -182,6 +184,7 @@ export default function NewInvoicePage() {
   const [customersError, setCustomersError] = useState<string | null>(null);
   const [accountId, setAccountId] = useState("");
   const [destinationDepartmentId, setDestinationDepartmentId] = useState("");
+  const [invoiceNo, setInvoiceNo] = useState("");
   const [referenceDocNo, setReferenceDocNo] = useState("");
   const [invoiceType, setInvoiceType] = useState<InvoiceType>("LOCAL_INVOICE");
   const [docDate, setDocDate] = useState(todayInputValue());
@@ -211,6 +214,7 @@ export default function NewInvoicePage() {
     () => ({
       accountId,
       destinationDepartmentId,
+      invoiceNo,
       referenceDocNo,
       invoiceType,
       docDate,
@@ -222,6 +226,7 @@ export default function NewInvoicePage() {
       accountId,
       destinationDepartmentId,
       docDate,
+      invoiceNo,
       invoiceType,
       lotId,
       referenceDocNo,
@@ -252,6 +257,7 @@ export default function NewInvoicePage() {
     restore: (draft) => {
       setAccountId(draft.accountId ?? "");
       setDestinationDepartmentId(draft.destinationDepartmentId ?? "");
+      setInvoiceNo(draft.invoiceNo ?? "");
       setReferenceDocNo(draft.referenceDocNo ?? "");
       setInvoiceType(normalizeInvoiceType(draft.invoiceType));
       setDocDate(draft.docDate ?? todayInputValue());
@@ -377,6 +383,11 @@ export default function NewInvoicePage() {
       return;
     }
 
+    if (!invoiceNo.trim()) {
+      toast.error("Enter Invoice No.");
+      return;
+    }
+
     if (!lotItem) {
       toast.error("Enter a valid stock Lot ID.");
       return;
@@ -394,6 +405,7 @@ export default function NewInvoicePage() {
         destinationDepartmentId: isInternalInvoice
           ? selectedInternalDestination?.departmentId
           : undefined,
+        invoiceNo: invoiceNo.trim(),
         referenceDocNo: referenceDocNo.trim(),
         invoiceType,
         docDate,
@@ -459,7 +471,7 @@ export default function NewInvoicePage() {
             </div>
           </div>
 
-          <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-6">
             <Field label="Invoice Type" required>
               <Select
                 value={invoiceType}
@@ -520,6 +532,15 @@ export default function NewInvoicePage() {
                   emptyMessage="No customer accounts found."
                 />
               )}
+            </Field>
+
+            <Field label="Invoice No" required>
+              <Input
+                value={invoiceNo}
+                onChange={(event) => setInvoiceNo(event.target.value)}
+                className="h-10 rounded-xl"
+                placeholder="INV-2026-001"
+              />
             </Field>
 
             <Field label="Reference Doc No" required>

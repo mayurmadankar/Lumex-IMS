@@ -21,6 +21,7 @@ export type CreateInvoicePayload = {
   accountId?: string;
   sourceCompanyId?: string;
   destinationDepartmentId?: string;
+  invoiceNo?: string;
   referenceDocNo: string;
   invoiceType: InvoiceType;
   docDate?: string;
@@ -42,6 +43,7 @@ export type CreateInvoiceFromInventoryPayload = {
   accountId?: string;
   sourceCompanyId?: string;
   destinationDepartmentId?: string;
+  invoiceNo?: string;
   referenceDocNo: string;
   invoiceType: InvoiceType;
   docDate?: string;

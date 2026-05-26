@@ -21,6 +21,10 @@ prisma/migrations/*
 !prisma/migrations/20260525000100_remove_user_item_list_permission/migration.sql
 !prisma/migrations/20260525000200_make_item_master_global/
 !prisma/migrations/20260525000200_make_item_master_global/migration.sql
+!prisma/migrations/20260525000300_transfer_request_workflow/
+!prisma/migrations/20260525000300_transfer_request_workflow/migration.sql
+!prisma/migrations/20260526000100_inventory_item_doc_id_not_unique/
+!prisma/migrations/20260526000100_inventory_item_doc_id_not_unique/migration.sql
 *.db
 *.db-journal
 
